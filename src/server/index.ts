@@ -2,6 +2,7 @@ import express from 'express';
 import { InitResponse, IncrementResponse, DecrementResponse } from '../shared/types/api';
 import { redis, reddit, createServer, context, getServerPort } from '@devvit/web/server';
 import { createPost } from './core/post';
+import { ensureTodayPost, getTodayCaption, getTodayPostId } from './scheduler';
 
 const app = express();
 
@@ -11,6 +12,17 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 // Middleware for plain text body parsing
 app.use(express.text());
+
+// Middleware to auto-create today's daily post if it doesn't exist
+// This ensures the post is always available when users access the app
+app.use(async (_req, _res, next) => {
+  try {
+    await ensureTodayPost();
+  } catch (error) {
+    console.error('[Middleware] Failed to ensure daily post:', error);
+  }
+  next();
+});
 
 const router = express.Router();
 
@@ -120,6 +132,34 @@ router.post('/internal/menu/post-create', async (_req, res): Promise<void> => {
     res.status(400).json({
       status: 'error',
       message: 'Failed to create post',
+    });
+  }
+});
+
+// API endpoint to get today's caption (for client use)
+router.get('/api/today-caption', async (_req, res): Promise<void> => {
+  try {
+    const caption = await getTodayCaption();
+    const postId = await getTodayPostId();
+
+    if (!caption || !postId) {
+      res.status(404).json({
+        status: 'error',
+        message: 'No caption posted for today yet',
+      });
+      return;
+    }
+
+    res.json({
+      caption,
+      postId,
+      date: new Date().toISOString().split('T')[0],
+    });
+  } catch (error) {
+    console.error(`Error fetching today's caption: ${error}`);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to fetch today\'s caption',
     });
   }
 });
