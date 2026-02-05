@@ -1,8 +1,7 @@
-import { navigateTo } from '@devvit/web/client';
 import { useCaption } from '../hooks/useCaption';
 
 export const App = () => {
-  const { caption, date, loading, error } = useCaption();
+  const { caption, loading, error } = useCaption();
   
   return (
     <div className="relative flex flex-col justify-center items-center min-h-screen bg-[#00EB90] overflow-hidden px-4 py-8 sm:py-12">
