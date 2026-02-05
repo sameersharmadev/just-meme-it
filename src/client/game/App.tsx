@@ -28,7 +28,12 @@ export const App = () => {
         
         {loading && (
           <div className="relative bg-white border-4 border-black rounded-2xl p-8 sm:p-10 md:p-12 lg:p-16 w-full min-h-[180px] sm:min-h-[200px] flex items-center">
-            <p className="text-2xl sm:text-4xl md:text-5xl text-center" style={{ fontFamily: 'Inter, sans-serif' }}>Loading today's caption...</p>
+            <p className="text-2xl sm:text-4xl md:text-5xl" style={{ fontFamily: 'Inter, sans-serif' }}>Loading today's caption...</p>
+            <img 
+                src="/quote.svg" 
+                alt="" 
+                className="absolute bottom-6 right-6 w-10 md:w-14 opacity-80"
+              />
           </div>
         )}
         
@@ -48,7 +53,7 @@ export const App = () => {
               <img 
                 src="/quote.svg" 
                 alt="" 
-                className="absolute bottom-6 right-6 w-10 hidden sm:block md:w-14 opacity-80"
+                className="absolute bottom-6 right-6 w-10 md:w-14 opacity-80"
               />
             </div>
           </>
