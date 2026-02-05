@@ -51,17 +51,22 @@ Value: {"userId":"t2_abc123","username":"meme_master","imageUrl":"https://...","
 
 **Key:** `votes:{date}:{oderId}`
 
-**Type:** Set
+**Type:** Sorted Set
 
-**Description:** Tracks which users have voted for a specific submission on a given day. Prevents duplicate voting.
+**Description:** Tracks which users have voted for a specific submission on a given day. Prevents duplicate voting. Score represents the timestamp when the vote was cast.
 
 **Members:** User IDs (e.g., `t2_abc123`)
+
+**Score:** Timestamp of when the vote was cast
 
 **Example:**
 
 ```
 Key: votes:2026-02-05:oder_xyz789
-Members: ["t2_user1", "t2_user2", "t2_user3"]
+Members with scores:
+  t2_user1: 1738747865473
+  t2_user2: 1738747866123
+  t2_user3: 1738747867890
 ```
 
 ---
@@ -167,14 +172,21 @@ const submissions = await redis.hGetAll(`submissions:${date}`);
 ### Record a Vote
 
 ```typescript
-await redis.sAdd(`votes:${date}:${oderId}`, userId);
+await redis.zAdd(`votes:${date}:${oderId}`, { member: userId, score: Date.now() });
 await redis.zIncrBy(`leaderboard:${date}`, oderId, 1);
 ```
 
 ### Check if User Already Voted
 
 ```typescript
-const hasVoted = await redis.sIsMember(`votes:${date}:${oderId}`, userId);
+const score = await redis.zScore(`votes:${date}:${oderId}`, userId);
+const hasVoted = score !== undefined;
+```
+
+### Get Vote Count
+
+```typescript
+const voteCount = await redis.zCard(`votes:${date}:${oderId}`);
 ```
 
 ### Get Daily Leaderboard

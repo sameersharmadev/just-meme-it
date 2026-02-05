@@ -1,10 +1,21 @@
+import { useState } from 'react';
 import { navigateTo } from '@devvit/web/client';
 import { useCounter } from '../hooks/useCounter';
+import { TestPanel } from '../components/TestPanel';
 
 export const App = () => {
   const { count, username, loading, increment, decrement } = useCounter();
+  const [showTestPanel, setShowTestPanel] = useState(false);
+
   return (
     <div className="flex relative flex-col justify-center items-center min-h-screen gap-4">
+      <button
+        onClick={() => setShowTestPanel(!showTestPanel)}
+        className="fixed top-4 right-4 px-3 py-1 bg-gray-800 text-white text-sm rounded z-50"
+      >
+        {showTestPanel ? 'Hide' : 'Test'} Panel
+      </button>
+      {showTestPanel && <TestPanel />}
       <img className="object-contain w-1/2 max-w-[250px] mx-auto" src="/snoo.png" alt="Snoo" />
       <div className="flex flex-col items-center gap-2">
         <h1 className="text-2xl font-bold text-center text-gray-900 ">

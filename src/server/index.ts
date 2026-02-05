@@ -2,6 +2,13 @@ import express from 'express';
 import { InitResponse, IncrementResponse, DecrementResponse } from '../shared/types/api';
 import { redis, reddit, createServer, context, getServerPort } from '@devvit/web/server';
 import { createPost } from './core/post';
+import {
+  storeSubmission,
+  hasUserSubmittedToday,
+  getSubmissionsForVoting,
+  getSubmissionByOderId,
+} from './services/submission';
+import { castVote, hasUserVoted, isOwnSubmission, getVoteCount } from './services/voting';
 
 const app = express();
 
@@ -121,6 +128,132 @@ router.post('/internal/menu/post-create', async (_req, res): Promise<void> => {
       status: 'error',
       message: 'Failed to create post',
     });
+  }
+});
+
+function getTodayDate(): string {
+  return new Date().toISOString().split('T')[0]!;
+}
+
+router.post('/api/test/submit', async (req, res): Promise<void> => {
+  try {
+    const username = await reddit.getCurrentUsername();
+    const userId = context.userId ?? 'test_user';
+    const { imageUrl, caption } = req.body as { imageUrl?: string; caption?: string };
+
+    const alreadySubmitted = await hasUserSubmittedToday(userId);
+    if (alreadySubmitted) {
+      res.status(400).json({ status: 'error', message: 'User already submitted today' });
+      return;
+    }
+
+    const submission = await storeSubmission(
+      userId,
+      username ?? 'anonymous',
+      imageUrl ?? 'https://example.com/test-meme.jpg',
+      caption ?? 'Test meme caption'
+    );
+
+    res.json({ status: 'success', submission });
+  } catch (error) {
+    console.error('Test submit error:', error);
+    res.status(500).json({ status: 'error', message: String(error) });
+  }
+});
+
+router.get('/api/test/submissions', async (_req, res): Promise<void> => {
+  try {
+    const submissions = await getSubmissionsForVoting();
+    res.json({ status: 'success', submissions, count: submissions.length });
+  } catch (error) {
+    console.error('Test get submissions error:', error);
+    res.status(500).json({ status: 'error', message: String(error) });
+  }
+});
+
+router.get('/api/test/submission/:oderId', async (req, res): Promise<void> => {
+  try {
+    const { oderId } = req.params;
+    const submission = await getSubmissionByOderId(oderId);
+    if (!submission) {
+      res.status(404).json({ status: 'error', message: 'Submission not found' });
+      return;
+    }
+    res.json({ status: 'success', submission });
+  } catch (error) {
+    console.error('Test get submission error:', error);
+    res.status(500).json({ status: 'error', message: String(error) });
+  }
+});
+
+router.post('/api/test/vote', async (req, res): Promise<void> => {
+  try {
+    const userId = context.userId ?? 'test_user';
+    const { oderId } = req.body as { oderId: string };
+    const date = getTodayDate();
+
+    if (!oderId) {
+      res.status(400).json({ status: 'error', message: 'oderId is required' });
+      return;
+    }
+
+    const isOwn = await isOwnSubmission(userId, oderId, date);
+    if (isOwn) {
+      res.status(400).json({ status: 'error', message: 'Cannot vote on your own submission' });
+      return;
+    }
+
+    const alreadyVoted = await hasUserVoted(userId, oderId, date);
+    if (alreadyVoted) {
+      res.status(400).json({ status: 'error', message: 'User already voted on this submission' });
+      return;
+    }
+
+    const success = await castVote(userId, oderId, date);
+    const voteCount = await getVoteCount(oderId, date);
+
+    res.json({ status: 'success', voted: success, voteCount });
+  } catch (error) {
+    console.error('Test vote error:', error);
+    res.status(500).json({ status: 'error', message: String(error) });
+  }
+});
+
+router.get('/api/test/vote-status/:oderId', async (req, res): Promise<void> => {
+  try {
+    const userId = context.userId ?? 'test_user';
+    const { oderId } = req.params;
+    const date = getTodayDate();
+
+    const [hasVoted, isOwn, voteCount] = await Promise.all([
+      hasUserVoted(userId, oderId, date),
+      isOwnSubmission(userId, oderId, date),
+      getVoteCount(oderId, date),
+    ]);
+
+    res.json({ status: 'success', hasVoted, isOwnSubmission: isOwn, voteCount });
+  } catch (error) {
+    console.error('Test vote status error:', error);
+    res.status(500).json({ status: 'error', message: String(error) });
+  }
+});
+
+router.get('/api/test/user-status', async (_req, res): Promise<void> => {
+  try {
+    const userId = context.userId ?? 'test_user';
+    const username = await reddit.getCurrentUsername();
+    const hasSubmitted = await hasUserSubmittedToday(userId);
+
+    res.json({
+      status: 'success',
+      userId,
+      username: username ?? 'anonymous',
+      hasSubmittedToday: hasSubmitted,
+      date: getTodayDate(),
+    });
+  } catch (error) {
+    console.error('Test user status error:', error);
+    res.status(500).json({ status: 'error', message: String(error) });
   }
 });
 
