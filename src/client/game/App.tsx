@@ -1,61 +1,72 @@
 import { navigateTo } from '@devvit/web/client';
-import { useCounter } from '../hooks/useCounter';
+import { useCaption } from '../hooks/useCaption';
 
 export const App = () => {
-  const { count, username, loading, increment, decrement } = useCounter();
+  const { caption, date, loading, error } = useCaption();
+  
   return (
-    <div className="flex relative flex-col justify-center items-center min-h-screen gap-4">
-      <img className="object-contain w-1/2 max-w-[250px] mx-auto" src="/snoo.png" alt="Snoo" />
-      <div className="flex flex-col items-center gap-2">
-        <h1 className="text-2xl font-bold text-center text-gray-900 ">
-          {username ? `Hey ${username} 👋` : ''}
-        </h1>
-        <p className="text-base text-center text-gray-600 ">
-          Edit <span className="bg-[#e5ebee]  px-1 py-0.5 rounded">src/client/game/App.tsx</span> to
-          get started.
-        </p>
-      </div>
-      <div className="flex items-center justify-center mt-5">
-        <button
-          className="flex items-center justify-center bg-[#d93900] text-white w-14 h-14 text-[2.5em] rounded-full cursor-pointer font-mono leading-none transition-colors"
-          onClick={decrement}
+    <div className="relative flex flex-col justify-center items-center min-h-screen bg-[#00EB90] overflow-hidden px-4 py-8 sm:py-12">
+      {/* Decorative Background Elements */}
+      <img 
+        src="/top-circle.svg" 
+        alt="" 
+        className="absolute top-0 left-0 w-32 sm:w-40 md:w-48 opacity-60 pointer-events-none"
+      />
+      <img 
+        src="/round-star.svg" 
+        alt="" 
+        className="absolute bottom-8 right-4 sm:bottom-12 sm:right-8 w-24 sm:w-32 md:w-40 opacity-60 pointer-events-none"
+      />
+      
+      <div className="relative z-10 flex flex-col items-center gap-6 sm:gap-8 w-full max-w-2xl lg:max-w-3xl px-2">
+        {/* Title Badge */}
+        <div className="bg-[#fbbf24] border-4 border-black rounded-xl px-8 py-3 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-semibold text-semibold tracking-tight">
+            JUST MEME IT
+          </h1>
+        </div>
+        
+        {loading && (
+          <div className="relative bg-white border-4 border-black rounded-2xl p-8 sm:p-10 md:p-12 lg:p-16 w-full min-h-[180px] sm:min-h-[200px] flex items-center">
+            <p className="text-2xl sm:text-4xl md:text-5xl text-center" style={{ fontFamily: 'Inter, sans-serif' }}>Loading today's caption...</p>
+          </div>
+        )}
+        
+        {error && (
+          <div className="bg-red-500 border-4 border-black rounded-2xl p-8 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] w-full">
+            <p className="text-xl sm:text-2xl text-white text-center">{error}</p>
+          </div>
+        )}
+        
+        {!loading && !error && caption && (
+          <>
+            {/* Caption Box shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] */}
+            <div className="relative bg-white border-4 border-black rounded-2xl p-8 sm:p-10 md:p-12 lg:p-16 w-full min-h-[180px] sm:min-h-[200px] flex items-center">
+              <p className="text-2xl sm:text-4xl md:text-5xl lg:text-6xl xl:text-6xl leading-tight text-left pr-12 sm:pr-16" style={{ fontFamily: 'Inter, sans-serif' }}>
+                {caption}
+              </p>
+              <img 
+                src="/quote.svg" 
+                alt="" 
+                className="absolute bottom-6 right-6 w-10 hidden sm:block md:w-14 opacity-80"
+              />
+            </div>
+          </>
+        )}
+        
+        {/* Add Meme Button */}
+        <button 
+          className="bg-black text-white border-4 border-black px-10 sm:px-14 md:px-16 py-4 transition-all active:translate-y-[2px] cursor-pointer"
           disabled={loading}
+          onClick={() => {
+            console.log('Add meme clicked');
+          }}
         >
-          -
-        </button>
-        <span className="text-[1.8em] font-medium mx-5 min-w-[50px] text-center leading-none text-gray-900">
-          {loading ? '...' : count}
-        </span>
-        <button
-          className="flex items-center justify-center bg-[#d93900] text-white w-14 h-14 text-[2.5em] rounded-full cursor-pointer font-mono leading-none transition-colors"
-          onClick={increment}
-          disabled={loading}
-        >
-          +
+          <span className="text-base sm:text-lg md:text-xl font-semibold tracking-wider uppercase">
+            ADD YOUR MEME
+          </span>
         </button>
       </div>
-      <footer className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-3 text-[0.8em] text-gray-600">
-        <button
-          className="cursor-pointer"
-          onClick={() => navigateTo('https://developers.reddit.com/docs')}
-        >
-          Docs
-        </button>
-        <span className="text-gray-300">|</span>
-        <button
-          className="cursor-pointer"
-          onClick={() => navigateTo('https://www.reddit.com/r/Devvit')}
-        >
-          r/Devvit
-        </button>
-        <span className="text-gray-300">|</span>
-        <button
-          className="cursor-pointer"
-          onClick={() => navigateTo('https://discord.com/invite/R7yu2wh9Qz')}
-        >
-          Discord
-        </button>
-      </footer>
     </div>
   );
 };

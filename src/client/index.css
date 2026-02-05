@@ -1,1 +1,14 @@
 @import 'tailwindcss';
+
+:root {
+  --color-bg-primary: #00EB90;
+  --color-accent: #34C759;
+  --color-yellow: #fbbf24;
+  --color-black: #000000;
+  --color-white: #ffffff;
+  --font-primary: 'Oswald', sans-serif;
+}
+
+body {
+  font-family: var(--font-primary);
+}
