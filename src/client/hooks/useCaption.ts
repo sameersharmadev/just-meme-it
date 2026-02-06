@@ -4,12 +4,14 @@ type CaptionData = {
   caption: string;
   postId: string;
   date: string;
+  username: string;
 };
 
 type CaptionState = {
   caption: string | null;
   postId: string | null;
   date: string | null;
+  username: string;
   loading: boolean;
   error: string | null;
 };
@@ -19,6 +21,7 @@ export const useCaption = () => {
     caption: null,
     postId: null,
     date: null,
+    username: 'anonymous',
     loading: true,
     error: null,
   });
@@ -38,6 +41,7 @@ export const useCaption = () => {
           caption: data.caption,
           postId: data.postId,
           date: data.date,
+          username: data.username,
           loading: false,
           error: null,
         });

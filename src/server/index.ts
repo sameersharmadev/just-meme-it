@@ -2,19 +2,16 @@ import express from 'express';
 import { InitResponse, IncrementResponse, DecrementResponse } from '../shared/types/api';
 import { redis, reddit, createServer, context, getServerPort } from '@devvit/web/server';
 import { createPost } from './core/post';
-import { ensureTodayPost, getTodayCaption, getTodayPostId } from './scheduler';
+import { ensureTodayPost, getTodayCaption, getTodayPostId } from './services/scheduler';
+import { handleMemeSubmission, SubmitMemeRequest, SubmitMemeResponse } from './services/submit';
+import { hasUserSubmittedToday } from './services/submission';
 
 const app = express();
 
-// Middleware for JSON body parsing
 app.use(express.json());
-// Middleware for URL-encoded body parsing
 app.use(express.urlencoded({ extended: true }));
-// Middleware for plain text body parsing
 app.use(express.text());
 
-// Middleware to auto-create today's daily post if it doesn't exist
-// This ensures the post is always available when users access the app
 app.use(async (_req, _res, next) => {
   try {
     await ensureTodayPost();
@@ -139,8 +136,11 @@ router.post('/internal/menu/post-create', async (_req, res): Promise<void> => {
 // API endpoint to get today's caption (for client use)
 router.get('/api/today-caption', async (_req, res): Promise<void> => {
   try {
-    const caption = await getTodayCaption();
-    const postId = await getTodayPostId();
+    const [caption, postId, username] = await Promise.all([
+      getTodayCaption(),
+      getTodayPostId(),
+      reddit.getCurrentUsername(),
+    ]);
 
     if (!caption || !postId) {
       res.status(404).json({
@@ -154,6 +154,7 @@ router.get('/api/today-caption', async (_req, res): Promise<void> => {
       caption,
       postId,
       date: new Date().toISOString().split('T')[0],
+      username: username ?? 'anonymous',
     });
   } catch (error) {
     console.error(`Error fetching today's caption: ${error}`);
@@ -164,10 +165,48 @@ router.get('/api/today-caption', async (_req, res): Promise<void> => {
   }
 });
 
-// Use router middleware
+// API endpoint to submit a meme
+router.post<unknown, SubmitMemeResponse, SubmitMemeRequest>(
+  '/api/submit-meme',
+  async (req, res): Promise<void> => {
+    try {
+      const [username, currentUser] = await Promise.all([
+        reddit.getCurrentUsername(),
+        reddit.getCurrentUser(),
+      ]);
+      if (!username || !currentUser?.id) {
+        res.status(401).json({ success: false, error: 'User not authenticated' });
+        return;
+      }
+      const userId = currentUser.id;
+      if (await hasUserSubmittedToday(userId)) {
+        res.status(400).json({ success: false, error: 'You have already submitted a meme today' });
+        return;
+      }
+      const caption = await getTodayCaption();
+      if (!caption) {
+        res.status(400).json({ success: false, error: 'No caption available for today' });
+        return;
+      }
+      const { imageDataUrl, imageType } = req.body;
+      if (!imageDataUrl || !imageType) {
+        res.status(400).json({ success: false, error: 'Missing required fields' });
+        return;
+      }
+      const result = await handleMemeSubmission(userId, username, caption, imageDataUrl, imageType);
+      res.status(result.success ? 200 : 500).json(result);
+    } catch (error) {
+      console.error('Error in /api/submit-meme:', error);
+      res.status(500).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Internal server error',
+      });
+    }
+  }
+);
+
 app.use(router);
 
-// Get port from environment variable with fallback
 const port = getServerPort();
 
 const server = createServer(app);

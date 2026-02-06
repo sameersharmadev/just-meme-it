@@ -1,11 +1,15 @@
 @import 'tailwindcss';
 
+@theme {
+  --color-paper-white: #F8F8F8;
+}
+
 :root {
   --color-bg-primary: #00EB90;
   --color-accent: #34C759;
   --color-yellow: #fbbf24;
   --color-black: #000000;
-  --color-white: #ffffff;
+  --color-paper-white: #F8F8F8;
   --font-primary: 'Oswald', sans-serif;
 }
 

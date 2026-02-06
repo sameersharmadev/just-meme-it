@@ -36,5 +36,8 @@
   },
   "dev": {
     "subreddit": "just_meme_it_dev"
+  },
+  "permissions": {
+    "media": true
   }
 }

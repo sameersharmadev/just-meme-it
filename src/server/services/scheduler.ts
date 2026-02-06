@@ -1,5 +1,5 @@
 import { redis, reddit } from '@devvit/web/server';
-import captions from '../../captions.json';
+import captions from '../../../captions.json';
 
 /**
  * Ensures today's caption post exists. If not, creates it automatically.
