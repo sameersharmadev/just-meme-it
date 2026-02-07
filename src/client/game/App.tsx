@@ -4,6 +4,9 @@ import { Layout } from './Layout';
 import { CaptionView } from './CaptionView';
 import { SubmissionView } from './SubmissionView';
 import { TestPanel } from '../components/TestPanel';
+import { Leaderboard } from '../components/Leaderboard';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faTrophy } from '@fortawesome/free-solid-svg-icons';
 
 type Step = 'view' | 'create';
 
@@ -15,6 +18,7 @@ export const App = () => {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [showTestPanel, setShowTestPanel] = useState(false);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
 
   const handleImageSelect = (dataUrl: string, type: 'image' | 'gif') => {
     setSelectedImage({ dataUrl, type });
@@ -70,9 +74,21 @@ export const App = () => {
 
   return (
     <Layout showTitle={step === 'view'}>
+      {/* Leaderboard Button */}
+      <button
+        onClick={() => setShowLeaderboard(!showLeaderboard)}
+        className="fixed top-4 right-4 bg-yellow-400 border-4 border-black px-4 py-3 rounded-xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all z-50 flex items-center gap-2"
+        aria-label="Toggle leaderboard"
+      >
+        <FontAwesomeIcon icon={faTrophy} className="text-xl" />
+      </button>
+
+      {/* Leaderboard Modal */}
+      <Leaderboard isOpen={showLeaderboard} onClose={() => setShowLeaderboard(false)} />
+
       <button
         onClick={() => setShowTestPanel(!showTestPanel)}
-        className="fixed top-4 right-4 px-3 py-1 bg-gray-800 text-white text-sm rounded z-50"
+        className="fixed top-4 right-20 px-3 py-1 bg-gray-800 text-white text-sm rounded z-50"
       >
         {showTestPanel ? 'Hide' : 'Test'} Panel
       </button>
