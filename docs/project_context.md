@@ -10,8 +10,7 @@ Core flow:
 - A submission is stored as PENDING at first.
 - After submitting, the user must vote/skip at least N randomly selected other submissions (forced voting queue).
 - Only after completing N votes does the user’s submission become PUBLISHED.
-- After that, the user may optionally browse and vote more, but only forced-queue votes count for the leaderboard.
-- Daily leaderboard is based ONLY on forced-queue votes (fairness is the key idea).
+- After that, the user may browse and vote more
 
 TECH STACK / CONSTRAINTS:
 - Using Devvit Web (server / client / shared folders).
