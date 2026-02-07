@@ -5,6 +5,10 @@ function getVoteKey(date: string, oderId: string): string {
   return `votes:${date}:${oderId}`;
 }
 
+function getDailyLeaderboardKey(date: string): string {
+  return `leaderboard:${date}`;
+}
+
 export async function castVote(userId: string, oderId: string, date: string): Promise<boolean> {
   const isOwn = await isOwnSubmission(userId, oderId, date);
   if (isOwn) {
@@ -17,6 +21,7 @@ export async function castVote(userId: string, oderId: string, date: string): Pr
   }
 
   await redis.zAdd(getVoteKey(date, oderId), { member: userId, score: Date.now() });
+  await redis.zIncrBy(getDailyLeaderboardKey(date), oderId, 1);
   return true;
 }
 

@@ -85,15 +85,48 @@ export const TestPanel = () => {
 
   const testUserStatus = () => runTest('User Status', () => fetch('/api/test/user-status'));
 
+  const testUpdateStreak = () =>
+    runTest('Update Streak', () =>
+      fetch('/api/test/update-streak', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+    );
+
+  const testRecordWin = () =>
+    runTest('Record Win (+100 pts)', () =>
+      fetch('/api/test/record-win', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ points: 100 }),
+      })
+    );
+
+  const testAddLifetimeScore = () =>
+    runTest('Add Lifetime Score (+10)', () =>
+      fetch('/api/test/add-lifetime-score', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ points: 10 }),
+      })
+    );
+
+  const testDailyLeaderboard = () =>
+    runTest('Daily Leaderboard', () => fetch('/api/test/leaderboard/daily?limit=10'));
+
+  const testLifetimeLeaderboard = () =>
+    runTest('Lifetime Leaderboard', () => fetch('/api/test/leaderboard/lifetime?limit=10'));
+
   return (
     <div className="fixed top-0 right-0 w-80 h-full bg-white border-l border-gray-200 p-4 overflow-y-auto shadow-lg">
       <h2 className="text-lg font-bold mb-4 text-gray-900">Test Panel</h2>
 
+      <h3 className="text-sm font-semibold text-gray-700 mb-2">User & Submissions</h3>
       <div className="space-y-2 mb-4">
         <button
           onClick={testUserStatus}
           disabled={loading}
-          className="w-full px-3 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
+          className="w-full px-3 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 text-sm"
         >
           Get User Status
         </button>
@@ -101,7 +134,7 @@ export const TestPanel = () => {
         <button
           onClick={testSubmit}
           disabled={loading}
-          className="w-full px-3 py-2 bg-green-500 text-white rounded hover:bg-green-600 disabled:opacity-50"
+          className="w-full px-3 py-2 bg-green-500 text-white rounded hover:bg-green-600 disabled:opacity-50 text-sm"
         >
           Submit Test Meme
         </button>
@@ -109,7 +142,7 @@ export const TestPanel = () => {
         <button
           onClick={testGetSubmissions}
           disabled={loading}
-          className="w-full px-3 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 disabled:opacity-50"
+          className="w-full px-3 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 disabled:opacity-50 text-sm"
         >
           Get All Submissions
         </button>
@@ -133,21 +166,88 @@ export const TestPanel = () => {
         </div>
       )}
 
+      <h3 className="text-sm font-semibold text-gray-700 mb-2">Voting</h3>
       <div className="space-y-2 mb-4">
         <button
           onClick={testVote}
           disabled={loading || !selectedOderId}
-          className="w-full px-3 py-2 bg-orange-500 text-white rounded hover:bg-orange-600 disabled:opacity-50"
+          className="w-full px-3 py-2 bg-orange-500 text-white rounded hover:bg-orange-600 disabled:opacity-50 text-sm"
         >
           Vote on Selected
         </button>
 
         <button
+          onClick={() => {
+            if (!selectedOderId) {
+              setResult({ status: 'error', message: 'Select a submission first' });
+              return;
+            }
+            runTest('Simulate Vote (+5)', () =>
+              fetch('/api/test/simulate-vote', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ oderId: selectedOderId, votes: 5 }),
+              })
+            );
+          }}
+          disabled={loading || !selectedOderId}
+          className="w-full px-3 py-2 bg-amber-500 text-white rounded hover:bg-amber-600 disabled:opacity-50 text-sm"
+        >
+          Simulate Votes (+5)
+        </button>
+
+        <button
           onClick={testVoteStatus}
           disabled={loading || !selectedOderId}
-          className="w-full px-3 py-2 bg-gray-500 text-white rounded hover:bg-gray-600 disabled:opacity-50"
+          className="w-full px-3 py-2 bg-gray-500 text-white rounded hover:bg-gray-600 disabled:opacity-50 text-sm"
         >
           Check Vote Status
+        </button>
+      </div>
+
+      <h3 className="text-sm font-semibold text-gray-700 mb-2">Streak & Wins</h3>
+      <div className="space-y-2 mb-4">
+        <button
+          onClick={testUpdateStreak}
+          disabled={loading}
+          className="w-full px-3 py-2 bg-cyan-500 text-white rounded hover:bg-cyan-600 disabled:opacity-50 text-sm"
+        >
+          Update Streak
+        </button>
+
+        <button
+          onClick={testRecordWin}
+          disabled={loading}
+          className="w-full px-3 py-2 bg-pink-500 text-white rounded hover:bg-pink-600 disabled:opacity-50 text-sm"
+        >
+          Record Win (+100 pts)
+        </button>
+
+        <button
+          onClick={testAddLifetimeScore}
+          disabled={loading}
+          className="w-full px-3 py-2 bg-teal-500 text-white rounded hover:bg-teal-600 disabled:opacity-50 text-sm"
+        >
+          Add Lifetime Score (+10)
+        </button>
+      </div>
+
+      <h3 className="text-sm font-semibold text-gray-700 mb-2">Leaderboards</h3>
+      <div className="space-y-2 mb-4">
+        <button
+          onClick={testDailyLeaderboard}
+          disabled={loading}
+          className="w-full px-3 py-2 bg-yellow-500 text-white rounded hover:bg-yellow-600 disabled:opacity-50 text-sm"
+        >
+          Daily Leaderboard
+        </button>
+
+        <button
+          onClick={testLifetimeLeaderboard}
+          disabled={loading}
+          className="w-full px-3 py-2 bg-indigo-500 text-white rounded hover:bg-indigo-600 disabled:opacity-50 text-sm"
+        >
+          Lifetime Leaderboard
         </button>
       </div>
 

@@ -8,7 +8,7 @@ export type Submission = {
 };
 
 export type UserStats = {
-  totalScore: number;
+  username: string;
   streak: number;
   lastParticipation: string;
   wins: number;

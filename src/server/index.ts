@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { type Request, type Response, type NextFunction } from 'express';
 import { InitResponse, IncrementResponse, DecrementResponse } from '../shared/types/api';
 import { redis, reddit, createServer, context, getServerPort } from '@devvit/web/server';
 import { createPost } from './core/post';
@@ -9,17 +9,57 @@ import {
   getSubmissionByOderId,
 } from './services/submission';
 import { castVote, hasUserVoted, isOwnSubmission, getVoteCount } from './services/voting';
+import {
+  getUserStats,
+  updateStreak,
+  recordWin,
+  addLifetimeScore,
+  getDailyLeaderboard,
+  getLifetimeLeaderboard,
+  setUsername,
+} from './services/userStats';
 
 const app = express();
 
-// Middleware for JSON body parsing
 app.use(express.json());
-// Middleware for URL-encoded body parsing
 app.use(express.urlencoded({ extended: true }));
-// Middleware for plain text body parsing
 app.use(express.text());
 
 const router = express.Router();
+
+function getTodayDate(): string {
+  return new Date().toISOString().split('T')[0]!;
+}
+
+async function isSubredditModerator(): Promise<boolean> {
+  const username = await reddit.getCurrentUsername();
+  if (!username || !context.subredditName) return false;
+
+  try {
+    const moderators = reddit.getModerators({
+      subredditName: context.subredditName,
+      username,
+    });
+
+    for await (const mod of moderators) {
+      if (mod.username.toLowerCase() === username.toLowerCase()) {
+        return true;
+      }
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+async function requireModerator(_req: Request, res: Response, next: NextFunction): Promise<void> {
+  const isMod = await isSubredditModerator();
+  if (!isMod) {
+    res.status(403).json({ status: 'error', message: 'Moderator access required' });
+    return;
+  }
+  next();
+}
 
 router.get<{ postId: string }, InitResponse | { status: string; message: string }>(
   '/api/init',
@@ -36,9 +76,10 @@ router.get<{ postId: string }, InitResponse | { status: string; message: string 
     }
 
     try {
-      const [count, username] = await Promise.all([
+      const [count, username, isMod] = await Promise.all([
         redis.get('count'),
         reddit.getCurrentUsername(),
+        isSubredditModerator(),
       ]);
 
       res.json({
@@ -46,6 +87,7 @@ router.get<{ postId: string }, InitResponse | { status: string; message: string 
         postId: postId,
         count: count ? parseInt(count) : 0,
         username: username ?? 'anonymous',
+        isModerator: isMod,
       });
     } catch (error) {
       console.error(`API Init Error for post ${postId}:`, error);
@@ -131,11 +173,183 @@ router.post('/internal/menu/post-create', async (_req, res): Promise<void> => {
   }
 });
 
-function getTodayDate(): string {
-  return new Date().toISOString().split('T')[0]!;
-}
+router.post('/api/submit', async (req, res): Promise<void> => {
+  try {
+    const username = await reddit.getCurrentUsername();
+    const userId = context.userId;
+    if (!userId) {
+      res.status(401).json({ status: 'error', message: 'User not authenticated' });
+      return;
+    }
 
-router.post('/api/test/submit', async (req, res): Promise<void> => {
+    const { imageUrl, caption } = req.body as { imageUrl?: string; caption?: string };
+    if (!imageUrl || !caption) {
+      res.status(400).json({ status: 'error', message: 'imageUrl and caption are required' });
+      return;
+    }
+
+    const alreadySubmitted = await hasUserSubmittedToday(userId);
+    if (alreadySubmitted) {
+      res.status(400).json({ status: 'error', message: 'You have already submitted today' });
+      return;
+    }
+
+    const submission = await storeSubmission(userId, username ?? 'anonymous', imageUrl, caption);
+    await updateStreak(userId, getTodayDate());
+
+    res.json({ status: 'success', submission });
+  } catch (error) {
+    console.error('Submit error:', error);
+    res.status(500).json({ status: 'error', message: String(error) });
+  }
+});
+
+router.get('/api/submissions', async (_req, res): Promise<void> => {
+  try {
+    const submissions = await getSubmissionsForVoting();
+    res.json({ status: 'success', submissions, count: submissions.length });
+  } catch (error) {
+    console.error('Get submissions error:', error);
+    res.status(500).json({ status: 'error', message: String(error) });
+  }
+});
+
+router.get('/api/submission/:oderId', async (req, res): Promise<void> => {
+  try {
+    const { oderId } = req.params;
+    const submission = await getSubmissionByOderId(oderId);
+    if (!submission) {
+      res.status(404).json({ status: 'error', message: 'Submission not found' });
+      return;
+    }
+    res.json({ status: 'success', submission });
+  } catch (error) {
+    console.error('Get submission error:', error);
+    res.status(500).json({ status: 'error', message: String(error) });
+  }
+});
+
+router.post('/api/vote', async (req, res): Promise<void> => {
+  try {
+    const userId = context.userId;
+    if (!userId) {
+      res.status(401).json({ status: 'error', message: 'User not authenticated' });
+      return;
+    }
+
+    const { oderId } = req.body as { oderId: string };
+    const date = getTodayDate();
+
+    if (!oderId) {
+      res.status(400).json({ status: 'error', message: 'oderId is required' });
+      return;
+    }
+
+    const isOwn = await isOwnSubmission(userId, oderId, date);
+    if (isOwn) {
+      res.status(400).json({ status: 'error', message: 'Cannot vote on your own submission' });
+      return;
+    }
+
+    const alreadyVoted = await hasUserVoted(userId, oderId, date);
+    if (alreadyVoted) {
+      res
+        .status(400)
+        .json({ status: 'error', message: 'You have already voted on this submission' });
+      return;
+    }
+
+    const success = await castVote(userId, oderId, date);
+    const voteCount = await getVoteCount(oderId, date);
+
+    res.json({ status: 'success', voted: success, voteCount });
+  } catch (error) {
+    console.error('Vote error:', error);
+    res.status(500).json({ status: 'error', message: String(error) });
+  }
+});
+
+router.get('/api/vote-status/:oderId', async (req, res): Promise<void> => {
+  try {
+    const userId = context.userId;
+    if (!userId) {
+      res.status(401).json({ status: 'error', message: 'User not authenticated' });
+      return;
+    }
+
+    const { oderId } = req.params;
+    const date = getTodayDate();
+
+    const [hasVoted, isOwn, voteCount] = await Promise.all([
+      hasUserVoted(userId, oderId, date),
+      isOwnSubmission(userId, oderId, date),
+      getVoteCount(oderId, date),
+    ]);
+
+    res.json({ status: 'success', hasVoted, isOwnSubmission: isOwn, voteCount });
+  } catch (error) {
+    console.error('Vote status error:', error);
+    res.status(500).json({ status: 'error', message: String(error) });
+  }
+});
+
+router.get('/api/user/status', async (_req, res): Promise<void> => {
+  try {
+    const userId = context.userId;
+    if (!userId) {
+      res.status(401).json({ status: 'error', message: 'User not authenticated' });
+      return;
+    }
+
+    const username = await reddit.getCurrentUsername();
+    const [stats, hasSubmitted] = await Promise.all([
+      getUserStats(userId),
+      hasUserSubmittedToday(userId),
+    ]);
+
+    if (username && !stats.username) {
+      await setUsername(userId, username);
+      stats.username = username;
+    }
+
+    res.json({
+      status: 'success',
+      userId,
+      username: stats.username || username || 'anonymous',
+      hasSubmittedToday: hasSubmitted,
+      date: getTodayDate(),
+      stats,
+    });
+  } catch (error) {
+    console.error('User status error:', error);
+    res.status(500).json({ status: 'error', message: String(error) });
+  }
+});
+
+router.get('/api/leaderboard/daily', async (req, res): Promise<void> => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 10;
+    const date = getTodayDate();
+    const leaderboard = await getDailyLeaderboard(date, limit);
+    res.json({ status: 'success', type: 'daily', date, leaderboard });
+  } catch (error) {
+    console.error('Daily leaderboard error:', error);
+    res.status(500).json({ status: 'error', message: String(error) });
+  }
+});
+
+router.get('/api/leaderboard/lifetime', async (req, res): Promise<void> => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 10;
+    const leaderboard = await getLifetimeLeaderboard(limit);
+    res.json({ status: 'success', type: 'lifetime', leaderboard });
+  } catch (error) {
+    console.error('Lifetime leaderboard error:', error);
+    res.status(500).json({ status: 'error', message: String(error) });
+  }
+});
+
+router.post('/api/test/submit', requireModerator, async (req, res): Promise<void> => {
   try {
     const username = await reddit.getCurrentUsername();
     const userId = context.userId ?? 'test_user';
@@ -161,7 +375,7 @@ router.post('/api/test/submit', async (req, res): Promise<void> => {
   }
 });
 
-router.get('/api/test/submissions', async (_req, res): Promise<void> => {
+router.get('/api/test/submissions', requireModerator, async (_req, res): Promise<void> => {
   try {
     const submissions = await getSubmissionsForVoting();
     res.json({ status: 'success', submissions, count: submissions.length });
@@ -171,7 +385,7 @@ router.get('/api/test/submissions', async (_req, res): Promise<void> => {
   }
 });
 
-router.get('/api/test/submission/:oderId', async (req, res): Promise<void> => {
+router.get('/api/test/submission/:oderId', requireModerator, async (req, res): Promise<void> => {
   try {
     const { oderId } = req.params;
     const submission = await getSubmissionByOderId(oderId);
@@ -186,7 +400,7 @@ router.get('/api/test/submission/:oderId', async (req, res): Promise<void> => {
   }
 });
 
-router.post('/api/test/vote', async (req, res): Promise<void> => {
+router.post('/api/test/vote', requireModerator, async (req, res): Promise<void> => {
   try {
     const userId = context.userId ?? 'test_user';
     const { oderId } = req.body as { oderId: string };
@@ -219,7 +433,7 @@ router.post('/api/test/vote', async (req, res): Promise<void> => {
   }
 });
 
-router.get('/api/test/vote-status/:oderId', async (req, res): Promise<void> => {
+router.get('/api/test/vote-status/:oderId', requireModerator, async (req, res): Promise<void> => {
   try {
     const userId = context.userId ?? 'test_user';
     const { oderId } = req.params;
@@ -238,18 +452,27 @@ router.get('/api/test/vote-status/:oderId', async (req, res): Promise<void> => {
   }
 });
 
-router.get('/api/test/user-status', async (_req, res): Promise<void> => {
+router.get('/api/test/user-status', requireModerator, async (_req, res): Promise<void> => {
   try {
     const userId = context.userId ?? 'test_user';
     const username = await reddit.getCurrentUsername();
-    const hasSubmitted = await hasUserSubmittedToday(userId);
+    const [stats, hasSubmitted] = await Promise.all([
+      getUserStats(userId),
+      hasUserSubmittedToday(userId),
+    ]);
+
+    if (username && !stats.username) {
+      await setUsername(userId, username);
+      stats.username = username;
+    }
 
     res.json({
       status: 'success',
       userId,
-      username: username ?? 'anonymous',
+      username: stats.username || username || 'anonymous',
       hasSubmittedToday: hasSubmitted,
       date: getTodayDate(),
+      stats,
     });
   } catch (error) {
     console.error('Test user status error:', error);
@@ -257,10 +480,135 @@ router.get('/api/test/user-status', async (_req, res): Promise<void> => {
   }
 });
 
-// Use router middleware
+router.post('/api/test/update-streak', requireModerator, async (_req, res): Promise<void> => {
+  try {
+    const userId = context.userId ?? 'test_user';
+    const username = await reddit.getCurrentUsername();
+    const date = getTodayDate();
+
+    if (username) {
+      await setUsername(userId, username);
+    }
+
+    const newStreak = await updateStreak(userId, date);
+    res.json({
+      status: 'success',
+      userId,
+      username: username ?? 'anonymous',
+      date,
+      streak: newStreak,
+    });
+  } catch (error) {
+    console.error('Test update streak error:', error);
+    res.status(500).json({ status: 'error', message: String(error) });
+  }
+});
+
+router.post('/api/test/record-win', requireModerator, async (req, res): Promise<void> => {
+  try {
+    const userId = context.userId ?? 'test_user';
+    const username = await reddit.getCurrentUsername();
+    const { points } = req.body as { points?: number };
+    const winPoints = points ?? 100;
+
+    if (username) {
+      await setUsername(userId, username);
+    }
+
+    const newWins = await recordWin(userId);
+    const newLifetimeScore = await addLifetimeScore(userId, winPoints);
+
+    res.json({
+      status: 'success',
+      userId,
+      username: username ?? 'anonymous',
+      wins: newWins,
+      pointsAwarded: winPoints,
+      lifetimeScore: newLifetimeScore,
+    });
+  } catch (error) {
+    console.error('Test record win error:', error);
+    res.status(500).json({ status: 'error', message: String(error) });
+  }
+});
+
+router.post('/api/test/add-lifetime-score', requireModerator, async (req, res): Promise<void> => {
+  try {
+    const userId = context.userId ?? 'test_user';
+    const username = await reddit.getCurrentUsername();
+    const { points } = req.body as { points?: number };
+    const pointsToAdd = points ?? 10;
+
+    if (username) {
+      await setUsername(userId, username);
+    }
+
+    const newLifetimeScore = await addLifetimeScore(userId, pointsToAdd);
+
+    res.json({
+      status: 'success',
+      userId,
+      username: username ?? 'anonymous',
+      pointsAdded: pointsToAdd,
+      lifetimeScore: newLifetimeScore,
+    });
+  } catch (error) {
+    console.error('Test add lifetime score error:', error);
+    res.status(500).json({ status: 'error', message: String(error) });
+  }
+});
+
+router.post('/api/test/simulate-vote', requireModerator, async (req, res): Promise<void> => {
+  try {
+    const { oderId, votes } = req.body as { oderId: string; votes?: number };
+    const date = getTodayDate();
+    const votesToAdd = votes ?? 1;
+
+    if (!oderId) {
+      res.status(400).json({ status: 'error', message: 'oderId is required' });
+      return;
+    }
+
+    await redis.zIncrBy(`leaderboard:${date}`, oderId, votesToAdd);
+    const newVoteCount = await redis.zScore(`leaderboard:${date}`, oderId);
+
+    res.json({
+      status: 'success',
+      oderId,
+      votesAdded: votesToAdd,
+      totalVotes: newVoteCount,
+    });
+  } catch (error) {
+    console.error('Test simulate vote error:', error);
+    res.status(500).json({ status: 'error', message: String(error) });
+  }
+});
+
+router.get('/api/test/leaderboard/daily', requireModerator, async (req, res): Promise<void> => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 10;
+    const date = getTodayDate();
+    const leaderboard = await getDailyLeaderboard(date, limit);
+    res.json({ status: 'success', type: 'daily', date, leaderboard });
+  } catch (error) {
+    console.error('Test daily leaderboard error:', error);
+    res.status(500).json({ status: 'error', message: String(error) });
+  }
+});
+
+router.get('/api/test/leaderboard/lifetime', requireModerator, async (req, res): Promise<void> => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 10;
+    const leaderboard = await getLifetimeLeaderboard(limit);
+    res.json({ status: 'success', type: 'lifetime', leaderboard });
+  } catch (error) {
+    console.error('Test lifetime leaderboard error:', error);
+    res.status(500).json({ status: 'error', message: String(error) });
+  }
+});
+
 app.use(router);
 
-// Get port from environment variable with fallback
 const port = getServerPort();
 
 const server = createServer(app);
