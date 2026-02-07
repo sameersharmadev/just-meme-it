@@ -1,14 +1,45 @@
 type ZSetEntry = { member: string; score: number };
 
+const stringStore: Map<string, string> = new Map();
 const hashStore: Map<string, Map<string, string>> = new Map();
 const zsetStore: Map<string, ZSetEntry[]> = new Map();
 
 export function clearMockRedis(): void {
+  stringStore.clear();
   hashStore.clear();
   zsetStore.clear();
 }
 
 export const redis = {
+  get: async (key: string): Promise<string | undefined> => {
+    return stringStore.get(key);
+  },
+
+  set: async (
+    key: string,
+    value: string,
+    options?: { nx?: boolean; expiration?: Date }
+  ): Promise<string | null> => {
+    if (options?.nx && stringStore.has(key)) {
+      return null;
+    }
+    stringStore.set(key, value);
+    return 'OK';
+  },
+
+  del: async (key: string): Promise<number> => {
+    const existed = stringStore.has(key);
+    stringStore.delete(key);
+    return existed ? 1 : 0;
+  },
+
+  incrBy: async (key: string, increment: number): Promise<number> => {
+    const current = parseInt(stringStore.get(key) ?? '0', 10);
+    const newValue = current + increment;
+    stringStore.set(key, String(newValue));
+    return newValue;
+  },
+
   hSet: async (key: string, fields: Record<string, string>): Promise<number> => {
     if (!hashStore.has(key)) {
       hashStore.set(key, new Map());

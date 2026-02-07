@@ -215,6 +215,9 @@ router.get('/api/today-caption', async (_req, res): Promise<void> => {
   }
 });
 
+const VALID_IMAGE_TYPES = new Set(['image', 'gif']);
+const MAX_IMAGE_DATA_URL_LENGTH = 10 * 1024 * 1024;
+
 router.post<unknown, SubmitMemeResponse, SubmitMemeRequest>(
   '/api/submit-meme',
   async (req, res): Promise<void> => {
@@ -228,21 +231,45 @@ router.post<unknown, SubmitMemeResponse, SubmitMemeRequest>(
         return;
       }
       const userId = currentUser.id;
+
+      const { imageDataUrl, imageType } = req.body;
+      if (!imageDataUrl || !imageType) {
+        res.status(400).json({ success: false, error: 'Missing required fields: imageDataUrl and imageType' });
+        return;
+      }
+
+      if (!VALID_IMAGE_TYPES.has(imageType)) {
+        res.status(400).json({ success: false, error: 'imageType must be "image" or "gif"' });
+        return;
+      }
+
+      if (typeof imageDataUrl !== 'string' || !imageDataUrl.startsWith('data:')) {
+        res.status(400).json({ success: false, error: 'imageDataUrl must be a valid data URL' });
+        return;
+      }
+
+      if (imageDataUrl.length > MAX_IMAGE_DATA_URL_LENGTH) {
+        res.status(400).json({ success: false, error: 'Image exceeds maximum allowed size (10MB)' });
+        return;
+      }
+
       if (await hasUserSubmittedToday(userId)) {
         res.status(400).json({ success: false, error: 'You have already submitted a meme today' });
         return;
       }
+
       const caption = await getTodayCaption();
       if (!caption) {
         res.status(400).json({ success: false, error: 'No caption available for today' });
         return;
       }
-      const { imageDataUrl, imageType } = req.body;
-      if (!imageDataUrl || !imageType) {
-        res.status(400).json({ success: false, error: 'Missing required fields' });
-        return;
-      }
+
       const result = await handleMemeSubmission(userId, username, caption, imageDataUrl, imageType);
+
+      if (result.success) {
+        await updateStreak(userId, getTodayDate());
+      }
+
       res.status(result.success ? 200 : 500).json(result);
     } catch (error) {
       console.error('Error in /api/submit-meme:', error);
@@ -258,7 +285,7 @@ router.post('/api/submit', async (req, res): Promise<void> => {
   try {
     const username = await reddit.getCurrentUsername();
     const userId = context.userId;
-    if (!userId) {
+    if (!userId || !username) {
       res.status(401).json({ status: 'error', message: 'User not authenticated' });
       return;
     }
@@ -269,13 +296,26 @@ router.post('/api/submit', async (req, res): Promise<void> => {
       return;
     }
 
+    const trimmedCaption = caption.trim();
+    if (trimmedCaption.length === 0) {
+      res.status(400).json({ status: 'error', message: 'Caption cannot be empty' });
+      return;
+    }
+
+    try {
+      new URL(imageUrl);
+    } catch {
+      res.status(400).json({ status: 'error', message: 'imageUrl must be a valid URL' });
+      return;
+    }
+
     const alreadySubmitted = await hasUserSubmittedToday(userId);
     if (alreadySubmitted) {
       res.status(400).json({ status: 'error', message: 'You have already submitted today' });
       return;
     }
 
-    const submission = await storeSubmission(userId, username ?? 'anonymous', imageUrl, caption);
+    const submission = await storeSubmission(userId, username, imageUrl, trimmedCaption);
     await updateStreak(userId, getTodayDate());
 
     res.json({ status: 'success', submission });
@@ -287,6 +327,12 @@ router.post('/api/submit', async (req, res): Promise<void> => {
 
 router.get('/api/submissions', async (_req, res): Promise<void> => {
   try {
+    const userId = context.userId;
+    if (!userId) {
+      res.status(401).json({ status: 'error', message: 'User not authenticated' });
+      return;
+    }
+
     const submissions = await getSubmissionsForVoting();
     res.json({ status: 'success', submissions, count: submissions.length });
   } catch (error) {
@@ -297,6 +343,12 @@ router.get('/api/submissions', async (_req, res): Promise<void> => {
 
 router.get('/api/submission/:oderId', async (req, res): Promise<void> => {
   try {
+    const userId = context.userId;
+    if (!userId) {
+      res.status(401).json({ status: 'error', message: 'User not authenticated' });
+      return;
+    }
+
     const { oderId } = req.params;
     const submission = await getSubmissionByOderId(oderId);
     if (!submission) {
@@ -318,16 +370,21 @@ router.post('/api/vote', async (req, res): Promise<void> => {
       return;
     }
 
-    const { oderId } = req.body as { oderId: string };
-    const date = getTodayDate();
-
-    if (!oderId) {
+    const { oderId } = req.body as { oderId?: string };
+    if (!oderId || typeof oderId !== 'string') {
       res.status(400).json({ status: 'error', message: 'oderId is required' });
       return;
     }
 
-    const isOwn = await isOwnSubmission(userId, oderId, date);
-    if (isOwn) {
+    const date = getTodayDate();
+
+    const submission = await getSubmissionByOderId(oderId, date);
+    if (!submission) {
+      res.status(404).json({ status: 'error', message: 'Submission not found' });
+      return;
+    }
+
+    if (submission.userId === userId) {
       res.status(400).json({ status: 'error', message: 'Cannot vote on your own submission' });
       return;
     }
@@ -361,13 +418,23 @@ router.get('/api/vote-status/:oderId', async (req, res): Promise<void> => {
     const { oderId } = req.params;
     const date = getTodayDate();
 
-    const [hasVoted, isOwn, voteCount] = await Promise.all([
+    const submission = await getSubmissionByOderId(oderId, date);
+    if (!submission) {
+      res.status(404).json({ status: 'error', message: 'Submission not found' });
+      return;
+    }
+
+    const [hasVoted, voteCount] = await Promise.all([
       hasUserVoted(userId, oderId, date),
-      isOwnSubmission(userId, oderId, date),
       getVoteCount(oderId, date),
     ]);
 
-    res.json({ status: 'success', hasVoted, isOwnSubmission: isOwn, voteCount });
+    res.json({
+      status: 'success',
+      hasVoted,
+      isOwnSubmission: submission.userId === userId,
+      voteCount,
+    });
   } catch (error) {
     console.error('Vote status error:', error);
     res.status(500).json({ status: 'error', message: String(error) });
@@ -407,9 +474,18 @@ router.get('/api/user/status', async (_req, res): Promise<void> => {
   }
 });
 
+const MAX_LEADERBOARD_LIMIT = 100;
+
 router.get('/api/leaderboard/daily', async (req, res): Promise<void> => {
   try {
-    const limit = parseInt(req.query.limit as string) || 10;
+    const userId = context.userId;
+    if (!userId) {
+      res.status(401).json({ status: 'error', message: 'User not authenticated' });
+      return;
+    }
+
+    const rawLimit = parseInt(req.query.limit as string) || 10;
+    const limit = Math.min(Math.max(rawLimit, 1), MAX_LEADERBOARD_LIMIT);
     const date = getTodayDate();
     const leaderboard = await getDailyLeaderboard(date, limit);
     res.json({ status: 'success', type: 'daily', date, leaderboard });
@@ -421,7 +497,14 @@ router.get('/api/leaderboard/daily', async (req, res): Promise<void> => {
 
 router.get('/api/leaderboard/lifetime', async (req, res): Promise<void> => {
   try {
-    const limit = parseInt(req.query.limit as string) || 10;
+    const userId = context.userId;
+    if (!userId) {
+      res.status(401).json({ status: 'error', message: 'User not authenticated' });
+      return;
+    }
+
+    const rawLimit = parseInt(req.query.limit as string) || 10;
+    const limit = Math.min(Math.max(rawLimit, 1), MAX_LEADERBOARD_LIMIT);
     const leaderboard = await getLifetimeLeaderboard(limit);
     res.json({ status: 'success', type: 'lifetime', leaderboard });
   } catch (error) {
