@@ -3,6 +3,7 @@ import { useCaption } from '../hooks/useCaption';
 import { Layout } from './Layout';
 import { CaptionView } from './CaptionView';
 import { SubmissionView } from './SubmissionView';
+import { TestPanel } from '../components/TestPanel';
 
 type Step = 'view' | 'create';
 
@@ -13,6 +14,7 @@ export const App = () => {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [showTestPanel, setShowTestPanel] = useState(false);
 
   const handleImageSelect = (dataUrl: string, type: 'image' | 'gif') => {
     setSelectedImage({ dataUrl, type });
@@ -68,6 +70,14 @@ export const App = () => {
 
   return (
     <Layout showTitle={step === 'view'}>
+      <button
+        onClick={() => setShowTestPanel(!showTestPanel)}
+        className="fixed top-4 right-4 px-3 py-1 bg-gray-800 text-white text-sm rounded z-50"
+      >
+        {showTestPanel ? 'Hide' : 'Test'} Panel
+      </button>
+      {showTestPanel && <TestPanel />}
+
       {loading && (
         <>
           <div className="relative bg-paper-white border-4 border-black rounded-2xl p-8 sm:p-10 md:p-12 lg:p-16 w-full min-h-[180px] sm:min-h-[200px] flex items-center">
@@ -77,7 +87,6 @@ export const App = () => {
             <img src="/quote.svg" alt="" className="absolute bottom-6 right-6 w-10 md:w-14 opacity-80" />
           </div>
 
-          {/* Disabled Add Submission Button */}
           <button
             className="bg-gray-900 text-white border-4 border-black px-10 sm:px-14 md:px-16 py-4 cursor-not-allowed opacity-90"
             disabled

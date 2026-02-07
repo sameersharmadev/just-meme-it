@@ -52,9 +52,12 @@ export async function getSubmissionsForVoting(): Promise<Submission[]> {
   return Object.values(submissions).map((value) => JSON.parse(value) as Submission);
 }
 
-export async function getSubmissionByOderId(oderId: string): Promise<Submission | null> {
-  const date = getTodayDate();
-  const data = await redis.hGet(`submissions:${date}`, oderId);
+export async function getSubmissionByOderId(
+  oderId: string,
+  date?: string
+): Promise<Submission | null> {
+  const targetDate = date ?? getTodayDate();
+  const data = await redis.hGet(`submissions:${targetDate}`, oderId);
 
   if (!data) {
     return null;

@@ -51,17 +51,22 @@ Value: {"userId":"t2_abc123","username":"meme_master","imageUrl":"https://...","
 
 **Key:** `votes:{date}:{oderId}`
 
-**Type:** Set
+**Type:** Sorted Set
 
-**Description:** Tracks which users have voted for a specific submission on a given day. Prevents duplicate voting.
+**Description:** Tracks which users have voted (upvoted) a specific submission on a given day. Prevents duplicate voting. Score represents the timestamp when the vote was cast.
 
 **Members:** User IDs (e.g., `t2_abc123`)
+
+**Score:** Timestamp of when the vote was cast
 
 **Example:**
 
 ```
 Key: votes:2026-02-05:oder_xyz789
-Members: ["t2_user1", "t2_user2", "t2_user3"]
+Members with scores:
+  t2_user1: 1738747865473
+  t2_user2: 1738747866123
+  t2_user3: 1738747867890
 ```
 
 ---
@@ -77,7 +82,7 @@ Members: ["t2_user1", "t2_user2", "t2_user3"]
 **Structure:**
 | Field | Type | Description |
 |-------|------|-------------|
-| `totalScore` | number | Cumulative points earned |
+| `username` | string | Reddit username |
 | `streak` | number | Consecutive days participated |
 | `lastParticipation` | string | Date of last participation (YYYY-MM-DD) |
 | `wins` | number | Total number of daily wins |
@@ -87,7 +92,7 @@ Members: ["t2_user1", "t2_user2", "t2_user3"]
 ```
 Key: user:t2_abc123
 Fields:
-  totalScore: 1250
+  username: meme_master
   streak: 7
   lastParticipation: 2026-02-05
   wins: 3
@@ -101,11 +106,11 @@ Fields:
 
 **Type:** Sorted Set
 
-**Description:** Ranked leaderboard for a specific day. Score represents vote count.
+**Description:** Ranked leaderboard for a specific day. Score represents vote count (upvotes).
 
 **Members:** `{oderId}` (submission ID)
 
-**Score:** Number of votes received
+**Score:** Number of upvotes received
 
 **Example:**
 
@@ -125,7 +130,7 @@ Members with scores:
 
 **Type:** Sorted Set
 
-**Description:** All-time leaderboard tracking cumulative user scores.
+**Description:** All-time leaderboard tracking cumulative user scores from wins and daily rounds.
 
 **Members:** `{userId}`
 
@@ -164,28 +169,51 @@ const hasSubmitted = Object.values(submissions).some((data) => JSON.parse(data).
 const submissions = await redis.hGetAll(`submissions:${date}`);
 ```
 
-### Record a Vote
+### Record a Vote (Upvote)
 
 ```typescript
-await redis.sAdd(`votes:${date}:${oderId}`, userId);
-await redis.zIncrBy(`leaderboard:${date}`, oderId, 1);
+await redis.zAdd(`votes:${date}:${oderId}`, { member: userId, score: Date.now() });
 ```
 
 ### Check if User Already Voted
 
 ```typescript
-const hasVoted = await redis.sIsMember(`votes:${date}:${oderId}`, userId);
+const score = await redis.zScore(`votes:${date}:${oderId}`, userId);
+const hasVoted = score !== undefined;
+```
+
+### Get Vote Count
+
+```typescript
+const voteCount = await redis.zCard(`votes:${date}:${oderId}`);
 ```
 
 ### Get Daily Leaderboard
 
 ```typescript
-const leaders = await redis.zRange(`leaderboard:${date}`, 0, 9, { reverse: true });
+const leaders = await redis.zRange(`leaderboard:${date}`, 0, 9, { by: 'rank', reverse: true });
 ```
 
-### Update User Stats
+### Update User Streak
 
 ```typescript
-await redis.hIncrBy(`user:${userId}`, 'totalScore', points);
-await redis.hSet(`user:${userId}`, 'lastParticipation', date);
+await redis.hSet(`user:${userId}`, { streak: String(newStreak), lastParticipation: date });
+```
+
+### Record a Win
+
+```typescript
+await redis.hIncrBy(`user:${userId}`, 'wins', 1);
+```
+
+### Add to Lifetime Leaderboard
+
+```typescript
+await redis.zIncrBy('leaderboard:lifetime', userId, points);
+```
+
+### Get Lifetime Leaderboard
+
+```typescript
+const leaders = await redis.zRange('leaderboard:lifetime', 0, 9, { by: 'rank', reverse: true });
 ```
