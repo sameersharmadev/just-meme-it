@@ -5,7 +5,7 @@ interface LayoutProps {
 
 export const Layout = ({ children, showTitle = true }: LayoutProps) => {
   return (
-    <div className="relative flex flex-col justify-center items-center min-h-screen bg-[#00EB90] overflow-hidden px-4 py-8 sm:py-12">
+    <div className="relative flex flex-col justify-center items-center min-h-screen bg-[#00EB90] overflow-hidden px-4 py-8 sm:py-12 pt-20">
       <img
         src="/top-circle.svg"
         alt=""

@@ -39,6 +39,14 @@ export const SubmissionView = ({
         </div>
       )}
 
+      {selectedImage && !submitError && !submitSuccess && (
+        <div className="bg-yellow-400 border-4 border-black rounded-xl p-4 w-full max-w-2xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] mb-2">
+          <p className="text-center font-bold uppercase text-lg">
+            Submission will be PENDING until you vote on 5 submissions
+          </p>
+        </div>
+      )}
+
       <MemePreview
         caption={caption}
         username={username}

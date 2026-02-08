@@ -3,12 +3,15 @@ import { useCaption } from '../hooks/useCaption';
 import { Layout } from './Layout';
 import { CaptionView } from './CaptionView';
 import { SubmissionView } from './SubmissionView';
+import { VotingQueue } from './VotingQueue';
 import { TestPanel } from '../components/TestPanel';
 import { Leaderboard } from '../components/Leaderboard';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faTrophy } from '@fortawesome/free-solid-svg-icons';
+import { Header } from '../components/Header';
+import { mockCurrentUser } from '../mocks/user';
 
-type Step = 'view' | 'create';
+type Step = 'view' | 'create' | 'voting';
+
+const REQUIRED_VOTES = 5;
 
 export const App = () => {
   const { caption, username, loading, error } = useCaption();
@@ -19,51 +22,38 @@ export const App = () => {
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [showTestPanel, setShowTestPanel] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [leaderboardMode, setLeaderboardMode] = useState<'points' | 'streaks'>('points');
 
   const handleImageSelect = (dataUrl: string, type: 'image' | 'gif') => {
     setSelectedImage({ dataUrl, type });
     setSubmitError(null);
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     if (!selectedImage) {
       setSubmitError('Please select an image first');
       return;
     }
 
-    setSubmitting(true);
+    // Move to voting queue - submission will be finalized after votes
+    setStep('voting');
     setSubmitError(null);
+  };
 
-    try {
-      const response = await fetch('/api/submit-meme', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          imageDataUrl: selectedImage.dataUrl,
-          imageType: selectedImage.type,
-        }),
-      });
+  const handleVotingComplete = () => {
+    // User completed required votes, submission is now published
+    setSubmitSuccess(true);
+  };
 
-      const result = await response.json();
-
-      if (result.success) {
-        setSubmitSuccess(true);
-        setSelectedImage(null);
-        setTimeout(() => {
-          setStep('view');
-          setSubmitSuccess(false);
-        }, 2000);
-      } else {
-        setSubmitError(result.error || 'Failed to submit meme');
-      }
-    } catch (err) {
-      setSubmitError('Network error: Failed to submit meme');
-      console.error('Submit error:', err);
-    } finally {
-      setSubmitting(false);
-    }
+  const handleShowLeaderboard = () => {
+    // All submissions exhausted, show leaderboard
+    setSelectedImage(null);
+    setLeaderboardMode('points');
+    setShowLeaderboard(true);
+    setTimeout(() => {
+      setStep('view');
+      setSubmitSuccess(false);
+    }, 2000);
   };
 
   const handleBack = () => {
@@ -72,19 +62,37 @@ export const App = () => {
     setSubmitError(null);
   };
 
-  return (
-    <Layout showTitle={step === 'view'}>
-      {/* Leaderboard Button */}
-      <button
-        onClick={() => setShowLeaderboard(!showLeaderboard)}
-        className="fixed top-4 right-4 bg-yellow-400 border-4 border-black px-4 py-3 rounded-xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all z-50 flex items-center gap-2"
-        aria-label="Toggle leaderboard"
-      >
-        <FontAwesomeIcon icon={faTrophy} className="text-xl" />
-      </button>
+  const handleStreakClick = () => {
+    setLeaderboardMode('streaks');
+    setShowLeaderboard(true);
+  };
 
-      {/* Leaderboard Modal */}
-      <Leaderboard isOpen={showLeaderboard} onClose={() => setShowLeaderboard(false)} />
+  const handleLeaderboardClick = () => {
+    if (showLeaderboard && leaderboardMode === 'points') {
+      setShowLeaderboard(false);
+    } else {
+      setLeaderboardMode('points');
+      setShowLeaderboard(true);
+    }
+  };
+
+  return (
+    <>
+      {/* Fixed Header with Streak and Leaderboard */}
+      <Header 
+        streak={mockCurrentUser.streak}
+        onLeaderboardClick={handleLeaderboardClick}
+        onStreakClick={handleStreakClick}
+      />
+
+      {/* Leaderboard Modal - Outside Layout to prevent z-index issues */}
+      <Leaderboard 
+        isOpen={showLeaderboard} 
+        onClose={() => setShowLeaderboard(false)}
+        mode={leaderboardMode}
+      />
+
+      <Layout showTitle={false}>
 
       <button
         onClick={() => setShowTestPanel(!showTestPanel)}
@@ -137,6 +145,16 @@ export const App = () => {
           onBack={handleBack}
         />
       )}
+
+      {!loading && !error && caption && step === 'voting' && (
+        <VotingQueue
+          caption={caption}
+          requiredVotes={REQUIRED_VOTES}
+          onComplete={handleVotingComplete}
+          onShowLeaderboard={handleShowLeaderboard}
+        />
+      )}
     </Layout>
+    </>
   );
 };
