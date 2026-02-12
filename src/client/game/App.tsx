@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { showForm } from '@devvit/web/client';
 import type { TextOverlay } from '../../shared/types/submission';
 import { useCaption } from '../hooks/useCaption';
@@ -11,6 +11,9 @@ import { VotingQueue } from './VotingQueue';
 import { Leaderboard } from '../components/Leaderboard';
 import { MyStats } from '../components/MyStats';
 import { Header } from '../components/Header';
+import { TestPanel } from '../components/TestPanel';
+
+declare const __ENABLE_TEST_PANEL__: boolean;
 
 type Step = 'view' | 'create' | 'voting';
 
@@ -31,6 +34,22 @@ export const App = () => {
   const [sessionOderId, setSessionOderId] = useState<string | null>(null);
   // Use in-session oderId if available, fall back to server-provided one
   const submittedOderId = sessionOderId ?? serverOderId;
+
+  // Debug tap to reveal test panel (5 taps within 2 seconds)
+  const DEBUG_TAP_COUNT = 5;
+  const DEBUG_TAP_WINDOW = 2000;
+  const [showTestPanel, setShowTestPanel] = useState(false);
+  const debugTaps = useRef<number[]>([]);
+
+  const handleDebugTap = useCallback(() => {
+    if (!__ENABLE_TEST_PANEL__) return;
+    const now = Date.now();
+    debugTaps.current = [...debugTaps.current.filter((t) => now - t < DEBUG_TAP_WINDOW), now];
+    if (debugTaps.current.length >= DEBUG_TAP_COUNT) {
+      setShowTestPanel((prev) => !prev);
+      debugTaps.current = [];
+    }
+  }, []);
 
   const handleAddSubmission = async () => {
     if (hasSubmittedToday) {
@@ -182,6 +201,7 @@ export const App = () => {
         onLeaderboardClick={handleLeaderboardClick}
         onStreakClick={handleStreakClick}
         onStatsClick={() => setShowMyStats(true)}
+        onTitleClick={handleDebugTap}
       />
 
       <Leaderboard
@@ -194,6 +214,8 @@ export const App = () => {
         isOpen={showMyStats}
         onClose={() => setShowMyStats(false)}
       />
+
+      {__ENABLE_TEST_PANEL__ && showTestPanel && <TestPanel />}
 
       <Layout showTitle={false}>
 
