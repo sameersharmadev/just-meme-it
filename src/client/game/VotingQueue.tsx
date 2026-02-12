@@ -4,6 +4,7 @@ import {
   faArrowUp,
   faCheck,
   faArrowRight,
+  faForwardStep,
 } from '@fortawesome/free-solid-svg-icons';
 import type { Submission } from '../../shared/types/submission';
 import { MemeTextOverlay } from './MemeTextOverlay';
@@ -449,7 +450,7 @@ export const VotingQueue = ({
           {currentSubmission && (
             <div
               style={cardStyle}
-              className="absolute inset-0 bg-paper-white border-4 border-black rounded-2xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] overflow-hidden flex flex-col select-none touch-pan-y"
+              className="absolute inset-0 bg-paper-white border-4 border-black rounded-2xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] overflow-hidden flex flex-col select-none touch-none"
               onMouseDown={(e) => {
                 e.preventDefault();
                 startDrag(e.clientX, e.clientY);
@@ -498,9 +499,32 @@ export const VotingQueue = ({
                 )}
               </div>
 
-              {/* Username at bottom */}
-              <div className="bg-white border-t-4 border-black p-4">
-                <p className="text-lg font-semibold text-center">@{currentSubmission.username}</p>
+              {/* Username + action buttons at bottom */}
+              <div className="bg-white border-t-4 border-black px-3 py-2 flex items-center justify-between">
+                <p className="text-sm font-semibold truncate">@{currentSubmission.username}</p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onTouchStart={(e) => e.stopPropagation()}
+                    onClick={() => navigate('next')}
+                    className="bg-gray-200 border-2 border-black rounded-lg w-8 h-8 flex items-center justify-center hover:bg-gray-300 active:bg-gray-400 transition-colors"
+                    aria-label="Skip"
+                  >
+                    <FontAwesomeIcon icon={faForwardStep} className="text-xs" />
+                  </button>
+                  <button
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onTouchStart={(e) => e.stopPropagation()}
+                    onClick={() => void handleVote()}
+                    disabled={isCurrentVoted || voting}
+                    className={`border-2 border-black rounded-lg w-8 h-8 flex items-center justify-center transition-colors ${
+                      isCurrentVoted ? 'bg-green-400' : 'bg-yellow-400 hover:bg-yellow-500 active:bg-yellow-600'
+                    } disabled:opacity-60`}
+                    aria-label="Vote"
+                  >
+                    <FontAwesomeIcon icon={isCurrentVoted ? faCheck : faArrowUp} className="text-xs" />
+                  </button>
+                </div>
               </div>
             </div>
           )}

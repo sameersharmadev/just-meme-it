@@ -12,7 +12,7 @@ interface HeaderProps {
 export const Header = ({ streak, onLeaderboardClick, onStreakClick, onStatsClick, onTitleClick }: HeaderProps) => {
   return (
     <header className="fixed top-0 left-0 right-0 z-30 w-full" onClick={onTitleClick}>
-      <div className="flex sm:flex-col items-center sm:items-end justify-end gap-3 px-4 py-3">
+      <div className="flex items-center justify-end gap-3 px-4 py-3">
         {/* Streak Display - Clickable */}
         <button
           onClick={onStreakClick}
