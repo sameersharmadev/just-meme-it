@@ -1,13 +1,16 @@
+import type { TextOverlay } from '../../shared/types/submission';
 import { MemePreview } from './MemePreview';
 
 interface SubmissionViewProps {
   caption: string;
   username: string;
-  selectedImage: { dataUrl: string; type: 'image' | 'gif' } | null;
+  imageUrl: string | null;
   submitting: boolean;
   submitError: string | null;
   submitSuccess: boolean;
-  onImageSelect: (dataUrl: string, type: 'image' | 'gif') => void;
+  overlays: TextOverlay[];
+  onOverlaysChange: (overlays: TextOverlay[]) => void;
+  onChangeImage: () => void;
   onSubmit: () => void;
   onBack: () => void;
 }
@@ -15,11 +18,13 @@ interface SubmissionViewProps {
 export const SubmissionView = ({
   caption,
   username,
-  selectedImage,
+  imageUrl,
   submitting,
   submitError,
   submitSuccess,
-  onImageSelect,
+  overlays,
+  onOverlaysChange,
+  onChangeImage,
   onSubmit,
   onBack,
 }: SubmissionViewProps) => {
@@ -39,7 +44,7 @@ export const SubmissionView = ({
         </div>
       )}
 
-      {selectedImage && !submitError && !submitSuccess && (
+      {imageUrl && !submitError && !submitSuccess && (
         <div className="bg-yellow-400 border-4 border-black rounded-xl p-4 w-full max-w-2xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] mb-2">
           <p className="text-center font-bold uppercase text-lg">
             Submission will be PENDING until you vote on 5 submissions
@@ -50,10 +55,9 @@ export const SubmissionView = ({
       <MemePreview
         caption={caption}
         username={username}
-        imageUrl={selectedImage?.dataUrl}
-        showUpload={!selectedImage}
-        onImageSelect={onImageSelect}
-        disabled={submitting}
+        imageUrl={imageUrl ?? undefined}
+        overlays={overlays}
+        onOverlaysChange={onOverlaysChange}
       />
 
       <div className="flex gap-4 w-full max-w-2xl">
@@ -65,16 +69,26 @@ export const SubmissionView = ({
           <span className="text-base sm:text-lg font-semibold tracking-wider uppercase">BACK</span>
         </button>
 
-        {selectedImage && (
-          <button
-            className="flex-1 bg-black text-white border-4 border-black px-6 py-4 transition-all active:translate-y-[2px] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-900"
-            disabled={submitting}
-            onClick={onSubmit}
-          >
-            <span className="text-base sm:text-lg font-semibold tracking-wider uppercase">
-              {submitting ? 'SUBMITTING...' : 'SUBMIT MEME'}
-            </span>
-          </button>
+        {imageUrl && (
+          <>
+            <button
+              className="flex-1 bg-gray-200 text-black border-4 border-black px-6 py-4 transition-all active:translate-y-[2px] cursor-pointer hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={onChangeImage}
+              disabled={submitting}
+            >
+              <span className="text-base sm:text-lg font-semibold tracking-wider uppercase">CHANGE</span>
+            </button>
+
+            <button
+              className="flex-1 bg-black text-white border-4 border-black px-6 py-4 transition-all active:translate-y-[2px] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-900"
+              disabled={submitting}
+              onClick={onSubmit}
+            >
+              <span className="text-base sm:text-lg font-semibold tracking-wider uppercase">
+                {submitting ? 'SUBMITTING...' : 'SUBMIT MEME'}
+              </span>
+            </button>
+          </>
         )}
       </div>
     </>

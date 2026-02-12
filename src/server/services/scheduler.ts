@@ -16,33 +16,47 @@ export async function ensureTodayPost(): Promise<boolean> {
   const dateKey = now.toISOString().split('T')[0];
   const existingPostId = await redis.get(`day:${dateKey}:postId`);
   if (existingPostId) {
-    return false; 
+    return false;
   }
 
-  // Use a lock to prevent race conditions (multiple users creating same post)
   const lockKey = `lock:daily-post:${dateKey}`;
-  const lockExpiry = new Date(Date.now() + 60000); 
-  const lockAcquired = await redis.set(lockKey, '1', { nx: true, expiration: lockExpiry });
-  
-  if (!lockAcquired) {
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    const postId = await redis.get(`day:${dateKey}:postId`);
-    return !!postId;
-  }
+  const lockExpiry = new Date(Date.now() + 60000);
+  const retryDelays = [500, 1000, 2000];
 
-  try {
-    const existingPost = await redis.get(`day:${dateKey}:postId`);
-    if (existingPost) {
-      await redis.del(lockKey);
-      return false;
+  for (let attempt = 0; attempt < retryDelays.length; attempt++) {
+    const lockAcquired = await redis.set(lockKey, '1', { nx: true, expiration: lockExpiry });
+
+    if (!lockAcquired) {
+      await new Promise(resolve => setTimeout(resolve, retryDelays[attempt]));
+      const postId = await redis.get(`day:${dateKey}:postId`);
+      if (postId) {
+        return false;
+      }
+      continue;
     }
 
-    await postDailyCaption();
-    console.log(`[Auto-Create] Successfully created daily post for ${dateKey}`);
-    return true;
-  } finally {
-    await redis.del(lockKey);
+    try {
+      const existingPost = await redis.get(`day:${dateKey}:postId`);
+      if (existingPost) {
+        await redis.del(lockKey);
+        return false;
+      }
+
+      await postDailyCaption();
+      console.log(`[Auto-Create] Successfully created daily post for ${dateKey}`);
+      return true;
+    } finally {
+      await redis.del(lockKey);
+    }
   }
+
+  // All retry attempts failed - check if another process created the post
+  const postId = await redis.get(`day:${dateKey}:postId`);
+  if (postId) {
+    return false;
+  }
+  console.error(`[Scheduler] Failed to acquire lock for ${dateKey} after ${retryDelays.length} attempts`);
+  return false;
 }
 
 /**

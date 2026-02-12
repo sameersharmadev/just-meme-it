@@ -1,14 +1,55 @@
 type ZSetEntry = { member: string; score: number };
 
+const stringStore: Map<string, string> = new Map();
+const expirationStore: Map<string, number> = new Map();
 const hashStore: Map<string, Map<string, string>> = new Map();
 const zsetStore: Map<string, ZSetEntry[]> = new Map();
 
+function isExpired(key: string): boolean {
+  const exp = expirationStore.get(key);
+  if (exp === undefined) return false;
+  if (Date.now() >= exp) {
+    stringStore.delete(key);
+    expirationStore.delete(key);
+    return true;
+  }
+  return false;
+}
+
 export function clearMockRedis(): void {
+  stringStore.clear();
+  expirationStore.clear();
   hashStore.clear();
   zsetStore.clear();
 }
 
 export const redis = {
+  set: async (
+    key: string,
+    value: string,
+    options?: { nx?: boolean; expiration?: Date }
+  ): Promise<string | null> => {
+    isExpired(key);
+    if (options?.nx && stringStore.has(key)) {
+      return null;
+    }
+    stringStore.set(key, value);
+    if (options?.expiration) {
+      expirationStore.set(key, options.expiration.getTime());
+    }
+    return 'OK';
+  },
+
+  get: async (key: string): Promise<string | undefined> => {
+    isExpired(key);
+    return stringStore.get(key);
+  },
+
+  del: async (key: string): Promise<number> => {
+    expirationStore.delete(key);
+    return stringStore.delete(key) ? 1 : 0;
+  },
+
   hSet: async (key: string, fields: Record<string, string>): Promise<number> => {
     if (!hashStore.has(key)) {
       hashStore.set(key, new Map());

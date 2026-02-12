@@ -30,7 +30,7 @@ describe('submission service', () => {
       expect(result.username).toBe('TestUser');
       expect(result.imageUrl).toBe('https://example.com/meme.jpg');
       expect(result.caption).toBe('Funny caption');
-      expect(result.oderId).toMatch(/^oder_\d+_[a-z0-9]+$/);
+      expect(result.oderId).toMatch(/^oder_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
       expect(result.submittedAt).toBe(Date.now());
     });
 

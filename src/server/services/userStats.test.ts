@@ -145,6 +145,7 @@ describe('userStats service', () => {
 
       await castVote('user3', sub1.oderId, '2026-02-05');
       await castVote('user4', sub1.oderId, '2026-02-05');
+      vi.advanceTimersByTime(2001); // advance past rate limit window
       await castVote('user3', sub2.oderId, '2026-02-05');
 
       const result = await getDailyLeaderboard('2026-02-05', 10);
@@ -172,6 +173,7 @@ describe('userStats service', () => {
       );
 
       await castVote('user3', sub1.oderId, '2026-02-05');
+      vi.advanceTimersByTime(2001); // advance past rate limit window
       await castVote('user3', sub2.oderId, '2026-02-05');
 
       const result = await getDailyLeaderboard('2026-02-05', 1);

@@ -1,6 +1,6 @@
 import { redis } from '@devvit/web/server';
 import type { UserStats } from '../../shared/types/submission';
-import { getSubmissionByOderId } from './submission';
+import { getSubmissionByOderId, getSubmissionsForVoting } from './submission';
 
 function getUserKey(userId: string): string {
   return `user:${userId}`;
@@ -47,6 +47,12 @@ export async function updateStreak(userId: string, date: string): Promise<number
   }
 
   await redis.hSet(key, { streak: String(newStreak), lastParticipation: date });
+
+  // Update the streak leaderboard sorted set
+  const username = stats.username || userId;
+  await redis.zAdd('leaderboard:streaks', { member: userId, score: newStreak });
+  await redis.hSet('leaderboard:streaks:usernames', { [userId]: username });
+
   return newStreak;
 }
 
@@ -69,13 +75,16 @@ export async function getDailyLeaderboard(
   date: string,
   limit: number
 ): Promise<DailyLeaderboardEntry[]> {
-  const entries = await redis.zRange(`leaderboard:${date}`, 0, limit - 1, {
+  // Get submissions that have votes
+  const votedEntries = await redis.zRange(`leaderboard:${date}`, 0, limit - 1, {
     by: 'rank',
     reverse: true,
   });
 
+  const votedOderIds = new Set(votedEntries.map((e) => e.member));
+
   const leaderboard: DailyLeaderboardEntry[] = await Promise.all(
-    entries.map(async (entry) => {
+    votedEntries.map(async (entry) => {
       const submission = await getSubmissionByOderId(entry.member, date);
       return {
         oderId: entry.member,
@@ -84,6 +93,21 @@ export async function getDailyLeaderboard(
       };
     })
   );
+
+  // Include submissions with 0 votes
+  if (leaderboard.length < limit) {
+    const allSubmissions = await getSubmissionsForVoting(date);
+    for (const sub of allSubmissions) {
+      if (leaderboard.length >= limit) break;
+      if (!votedOderIds.has(sub.oderId)) {
+        leaderboard.push({
+          oderId: sub.oderId,
+          username: sub.username,
+          votes: 0,
+        });
+      }
+    }
+  }
 
   return leaderboard;
 }
@@ -112,4 +136,38 @@ export async function getLifetimeLeaderboard(limit: number): Promise<LifetimeLea
   );
 
   return leaderboard;
+}
+
+export type StreakLeaderboardEntry = {
+  userId: string;
+  username: string;
+  streak: number;
+};
+
+export async function getStreakLeaderboard(limit: number): Promise<StreakLeaderboardEntry[]> {
+  // Build streak leaderboard from today's submissions by looking up each user's streak
+  const submissions = await getSubmissionsForVoting();
+
+  // Deduplicate by userId (one entry per user)
+  const seenUsers = new Set<string>();
+  const leaderboard: StreakLeaderboardEntry[] = [];
+
+  for (const sub of submissions) {
+    if (seenUsers.has(sub.userId)) continue;
+    seenUsers.add(sub.userId);
+
+    const userStats = await getUserStats(sub.userId);
+    if (userStats.streak > 0) {
+      leaderboard.push({
+        userId: sub.userId,
+        username: userStats.username || sub.username,
+        streak: userStats.streak,
+      });
+    }
+  }
+
+  // Sort by streak descending
+  leaderboard.sort((a, b) => b.streak - a.streak);
+
+  return leaderboard.slice(0, limit);
 }

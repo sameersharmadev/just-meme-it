@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
+import { fetchWithTimeout } from '../utils/fetchWithTimeout';
 
 type CaptionData = {
   caption: string;
   postId: string;
   date: string;
   username: string;
+  isModerator: boolean;
 };
 
 type CaptionState = {
@@ -12,6 +14,7 @@ type CaptionState = {
   postId: string | null;
   date: string | null;
   username: string;
+  isModerator: boolean;
   loading: boolean;
   error: string | null;
 };
@@ -22,6 +25,7 @@ export const useCaption = () => {
     postId: null,
     date: null,
     username: 'anonymous',
+    isModerator: false,
     loading: true,
     error: null,
   });
@@ -29,7 +33,7 @@ export const useCaption = () => {
   useEffect(() => {
     const fetchCaption = async () => {
       try {
-        const res = await fetch('/api/today-caption');
+        const res = await fetchWithTimeout('/api/today-caption');
         if (!res.ok) {
           if (res.status === 404) {
             throw new Error('No caption posted yet');
@@ -42,6 +46,7 @@ export const useCaption = () => {
           postId: data.postId,
           date: data.date,
           username: data.username,
+          isModerator: data.isModerator ?? false,
           loading: false,
           error: null,
         });

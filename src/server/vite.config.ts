@@ -11,7 +11,7 @@ export default defineConfig({
     outDir: '../../dist/server',
     emptyOutDir: true,
     target: 'node22',
-    sourcemap: true,
+    sourcemap: false,
     rollupOptions: {
       external: [...builtinModules],
 

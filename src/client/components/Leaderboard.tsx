@@ -1,8 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faTrophy, faMedal, faAward, faFire } from '@fortawesome/free-solid-svg-icons';
-import { mockDailyLeaderboard, mockLifetimeLeaderboard } from '../mocks/leaderboard';
-import { mockStreakLeaderboard } from '../mocks/user';
 
 interface LeaderboardProps {
   isOpen: boolean;
@@ -12,16 +10,79 @@ interface LeaderboardProps {
 
 type LeaderboardTab = 'daily' | 'lifetime' | 'streak';
 
+type DailyEntry = {
+  oderId: string;
+  username: string;
+  votes: number;
+};
+
+type LifetimeEntry = {
+  userId: string;
+  username: string;
+  score: number;
+};
+
+type StreakEntry = {
+  userId: string;
+  username: string;
+  streak: number;
+};
+
 export const Leaderboard = ({ isOpen, onClose, mode }: LeaderboardProps) => {
   const [activeTab, setActiveTab] = useState<LeaderboardTab>(mode === 'streaks' ? 'streak' : 'daily');
-  const dailyData = mockDailyLeaderboard.leaderboard;
-  const lifetimeData = mockLifetimeLeaderboard.leaderboard;
-  const streakData = mockStreakLeaderboard.leaderboard;
-  
-  const currentData = 
-    activeTab === 'daily' ? dailyData : 
-    activeTab === 'lifetime' ? lifetimeData : 
-    streakData;
+  const [dailyData, setDailyData] = useState<DailyEntry[]>([]);
+  const [lifetimeData, setLifetimeData] = useState<LifetimeEntry[]>([]);
+  const [streakData, setStreakData] = useState<StreakEntry[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Sync tab when mode changes externally
+  useEffect(() => {
+    setActiveTab(mode === 'streaks' ? 'streak' : 'daily');
+  }, [mode]);
+
+  // Fetch leaderboard data when modal opens or tab changes
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const fetchLeaderboard = async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const endpoint = activeTab === 'daily'
+          ? '/api/leaderboard/daily?limit=10'
+          : activeTab === 'streak'
+          ? '/api/leaderboard/streaks?limit=10'
+          : '/api/leaderboard/lifetime?limit=10';
+
+        const res = await fetch(endpoint);
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+
+        const data = await res.json();
+        if (data.status !== 'success') {
+          throw new Error(data.message || 'Failed to fetch leaderboard');
+        }
+
+        if (activeTab === 'daily') {
+          setDailyData(data.leaderboard);
+        } else if (activeTab === 'streak') {
+          setStreakData(data.leaderboard);
+        } else {
+          setLifetimeData(data.leaderboard);
+        }
+      } catch (err) {
+        console.error('Leaderboard fetch error:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load leaderboard');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void fetchLeaderboard();
+  }, [isOpen, activeTab]);
 
   if (!isOpen) return null;
 
@@ -36,6 +97,73 @@ export const Leaderboard = ({ isOpen, onClose, mode }: LeaderboardProps) => {
       default:
         return <span className="text-lg font-bold text-gray-700">#{rank}</span>;
     }
+  };
+
+  const renderEntries = () => {
+    if (loading) {
+      return (
+        <div className="text-center py-8">
+          <p className="text-lg font-semibold text-gray-500">Loading...</p>
+        </div>
+      );
+    }
+
+    if (error) {
+      return (
+        <div className="text-center py-8">
+          <p className="text-lg font-semibold text-red-500">{error}</p>
+        </div>
+      );
+    }
+
+    const entries = activeTab === 'daily'
+      ? dailyData
+      : activeTab === 'streak'
+      ? streakData
+      : lifetimeData;
+
+    if (entries.length === 0) {
+      return (
+        <div className="text-center py-8">
+          <p className="text-lg font-semibold text-gray-500">No entries yet</p>
+        </div>
+      );
+    }
+
+    return entries.map((entry, index) => {
+      const rank = index + 1;
+
+      let score: number;
+      let key: string;
+      if (activeTab === 'daily') {
+        score = (entry as DailyEntry).votes;
+        key = (entry as DailyEntry).oderId;
+      } else if (activeTab === 'streak') {
+        score = (entry as StreakEntry).streak;
+        key = (entry as StreakEntry).userId;
+      } else {
+        score = (entry as LifetimeEntry).score;
+        key = (entry as LifetimeEntry).userId;
+      }
+
+      return (
+        <div
+          key={key}
+          className="bg-white border-3 border-black rounded-lg p-4 flex items-center justify-between shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
+        >
+          <div className="flex items-center gap-4">
+            <div className="w-10 flex items-center justify-center">
+              {getRankIcon(rank)}
+            </div>
+            <span className="text-lg font-semibold truncate max-w-[150px]">{entry.username}</span>
+          </div>
+          <div className="bg-black text-white px-3 py-1 rounded-md font-bold">
+            {activeTab === 'streak' && <FontAwesomeIcon icon={faFire} className="mr-1" />}
+            {score}
+          </div>
+        </div>
+      );
+    });
   };
 
   return (
@@ -94,35 +222,7 @@ export const Leaderboard = ({ isOpen, onClose, mode }: LeaderboardProps) => {
 
           {/* Leaderboard List */}
           <div className="space-y-3 max-h-[400px] overflow-y-auto">
-            {currentData.map((entry, index) => {
-              const rank = index + 1;
-              const score = 
-                activeTab === 'daily' ? (entry as typeof dailyData[0]).votes :
-                activeTab === 'lifetime' ? (entry as typeof lifetimeData[0]).points :
-                (entry as typeof streakData[0]).streak;
-              
-              const key = 
-                activeTab === 'daily' ? (entry as typeof dailyData[0]).oderId :
-                activeTab === 'lifetime' ? (entry as typeof lifetimeData[0]).userId :
-                (entry as typeof streakData[0]).userId;
-              
-              return (
-                <div
-                  key={key}
-                  className="bg-white border-3 border-black rounded-lg p-4 flex items-center justify-between shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 flex items-center justify-center">
-                      {getRankIcon(rank)}
-                    </div>
-                    <span className="text-lg font-semibold truncate max-w-[150px]">{entry.username}</span>
-                  </div>
-                  <div className="bg-black text-white px-3 py-1 rounded-md font-bold">
-                    {score}
-                  </div>
-                </div>
-              );
-            })}
+            {renderEntries()}
           </div>
         </div>
       </div>

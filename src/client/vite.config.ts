@@ -9,7 +9,7 @@ export default defineConfig({
   build: {
     outDir: '../../dist/client',
     emptyOutDir: true,
-    sourcemap: true,
+    sourcemap: false,
     rollupOptions: {
       input: {
         splash: 'splash.html',
@@ -19,7 +19,6 @@ export default defineConfig({
         entryFileNames: '[name].js',
         chunkFileNames: '[name].js',
         assetFileNames: '[name][extname]',
-        sourcemapFileNames: '[name].js.map',
       },
     },
   },
