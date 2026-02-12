@@ -32,7 +32,7 @@ export const VotingQueue = ({
 }: VotingQueueProps) => {
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [votesCompleted, setVotesCompleted] = useState(0);
+  const [reviewedIds, setReviewedIds] = useState<Set<string>>(new Set());
   const [votedIds, setVotedIds] = useState<Set<string>>(new Set());
   const [submissionPublished, setSubmissionPublished] = useState(hasSubmittedToday);
   const [showIntro, setShowIntro] = useState(true);
@@ -52,9 +52,16 @@ export const VotingQueue = ({
   const currentIndexRef = useRef(currentIndex);
   const submissionsLenRef = useRef(submissions.length);
   const isNavigatingRef = useRef(false);
+  const reviewedIdsRef = useRef(reviewedIds);
+  const submissionsRef = useRef(submissions);
+  const effectiveRequiredVotesRef = useRef(0);
+  const submissionPublishedRef = useRef(submissionPublished);
 
   useEffect(() => { currentIndexRef.current = currentIndex; }, [currentIndex]);
   useEffect(() => { submissionsLenRef.current = submissions.length; }, [submissions.length]);
+  useEffect(() => { reviewedIdsRef.current = reviewedIds; }, [reviewedIds]);
+  useEffect(() => { submissionsRef.current = submissions; }, [submissions]);
+  useEffect(() => { submissionPublishedRef.current = submissionPublished; }, [submissionPublished]);
 
   // ── Fetch submissions ──────────────────────────────────────────────
   useEffect(() => {
@@ -122,6 +129,7 @@ export const VotingQueue = ({
 
   // Adjust required votes to available submissions — first users can't be blocked
   const effectiveRequiredVotes = Math.min(requiredVotes, submissions.length);
+  useEffect(() => { effectiveRequiredVotesRef.current = effectiveRequiredVotes; }, [effectiveRequiredVotes]);
 
   const currentSubmission = submissions[currentIndex];
   const isCurrentVoted = currentSubmission ? votedIds.has(currentSubmission.oderId) : false;
@@ -168,6 +176,37 @@ export const VotingQueue = ({
     }, 180);
   }, []); // stable — reads from refs
 
+  // ── Mark current submission as reviewed (vote or skip) ──────────
+  const markCurrentReviewed = useCallback(() => {
+    const sub = submissionsRef.current[currentIndexRef.current];
+    if (!sub) return;
+
+    setReviewedIds((prev) => {
+      const next = new Set(prev);
+      next.add(sub.oderId);
+      // Update ref immediately for use in same tick
+      reviewedIdsRef.current = next;
+
+      if (next.size >= effectiveRequiredVotesRef.current && !submissionPublishedRef.current) {
+        setSubmissionPublished(true);
+        submissionPublishedRef.current = true;
+        setShowFinalizedMessage(true);
+        onComplete();
+      }
+
+      return next;
+    });
+  }, [onComplete]);
+
+  // ── Go next = mark reviewed + navigate forward ──────────────────
+  const goNext = useCallback(() => {
+    markCurrentReviewed();
+    navigate('next');
+  }, [markCurrentReviewed, navigate]);
+
+  const goNextRef = useRef(goNext);
+  useEffect(() => { goNextRef.current = goNext; }, [goNext]);
+
   // ── Vote ─────────────────────────────────────────────────────────
   const handleVote = async () => {
     if (!currentSubmission || isCurrentVoted || voting) return;
@@ -183,14 +222,14 @@ export const VotingQueue = ({
       const data = await res.json();
       if (res.ok && data.status === 'success') {
         setVotedIds((prev) => new Set(prev).add(currentSubmission.oderId));
-        const newVotesCompleted = votesCompleted + 1;
-        setVotesCompleted(newVotesCompleted);
+        markCurrentReviewed();
 
-        if (newVotesCompleted >= effectiveRequiredVotes && !submissionPublished) {
-          setSubmissionPublished(true);
-          setShowFinalizedMessage(true);
-          onComplete();
-        }
+        // Auto-advance after a short delay
+        setTimeout(() => {
+          if (!isNavigatingRef.current) {
+            navigate('next');
+          }
+        }, 400);
       }
     } catch (err) {
       console.error('Vote error:', err);
@@ -260,7 +299,11 @@ export const VotingQueue = ({
         const threshold = velocity > 0.3 ? 8 : 18;
 
         if (Math.abs(offsetX) > threshold) {
-          navigate(offsetX < 0 ? 'next' : 'prev');
+          if (offsetX < 0) {
+            goNextRef.current();
+          } else {
+            navigate('prev');
+          }
         } else {
           setTransitionEnabled(true);
           setCardOffset(0);
@@ -303,7 +346,7 @@ export const VotingQueue = ({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'ArrowLeft') navigate('prev');
-      if (e.key === 'ArrowRight') navigate('next');
+      if (e.key === 'ArrowRight') goNextRef.current();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -359,9 +402,9 @@ export const VotingQueue = ({
       <div className="flex flex-col items-center gap-6 w-full max-w-2xl px-4">
         <div className="bg-yellow-400 border-4 border-black rounded-2xl p-8 w-full shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
           <p className="text-2xl text-black text-center font-bold uppercase mb-2">
-            Vote on {effectiveRequiredVotes} Submissions
+            Browse {effectiveRequiredVotes} Submissions
           </p>
-          <p className="text-lg text-black text-center mb-6">Swipe to browse, tap vote when you like one</p>
+          <p className="text-lg text-black text-center mb-6">Swipe to browse, vote or skip to continue</p>
           <button
             onClick={() => setShowIntro(false)}
             className="w-full bg-black text-white border-4 border-black px-8 py-4 rounded-xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center justify-center gap-2"
@@ -395,11 +438,11 @@ export const VotingQueue = ({
   // ── Main render ────────────────────────────────────────────────────
 
   const progressPct = effectiveRequiredVotes > 0
-    ? Math.min((votesCompleted / effectiveRequiredVotes) * 100, 100)
+    ? Math.min((reviewedIds.size / effectiveRequiredVotes) * 100, 100)
     : 100;
-  const progressLabel = submissionPublished ? 'Keep Browsing' : 'Vote to Finalize';
-  const progressExtra = submissionPublished && votesCompleted > effectiveRequiredVotes
-    ? ` (+${votesCompleted - effectiveRequiredVotes})`
+  const progressLabel = submissionPublished ? 'Keep Browsing' : 'Browse to Finalize';
+  const progressExtra = submissionPublished && reviewedIds.size > effectiveRequiredVotes
+    ? ` (+${reviewedIds.size - effectiveRequiredVotes})`
     : '';
 
   return (
@@ -414,7 +457,7 @@ export const VotingQueue = ({
         <div className="flex items-center justify-between mb-2">
           <span className="text-lg font-bold uppercase">{progressLabel}</span>
           <span className="text-lg font-bold">
-            {votesCompleted}/{effectiveRequiredVotes}{progressExtra}
+            {reviewedIds.size}/{effectiveRequiredVotes}{progressExtra}
           </span>
         </div>
         <div className="w-full bg-white border-2 border-black rounded-full h-3 overflow-hidden">
@@ -441,7 +484,7 @@ export const VotingQueue = ({
             />
           </div>
           <span className="text-sm font-bold">
-            {votesCompleted}/{effectiveRequiredVotes}{progressExtra}
+            {reviewedIds.size}/{effectiveRequiredVotes}{progressExtra}
           </span>
         </div>
 
@@ -506,7 +549,7 @@ export const VotingQueue = ({
                   <button
                     onMouseDown={(e) => e.stopPropagation()}
                     onTouchStart={(e) => e.stopPropagation()}
-                    onClick={() => navigate('next')}
+                    onClick={() => goNext()}
                     className="bg-gray-200 border-2 border-black rounded-lg w-8 h-8 flex items-center justify-center hover:bg-gray-300 active:bg-gray-400 transition-colors"
                     aria-label="Skip"
                   >
