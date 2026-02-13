@@ -145,29 +145,18 @@ export type StreakLeaderboardEntry = {
 };
 
 export async function getStreakLeaderboard(limit: number): Promise<StreakLeaderboardEntry[]> {
-  // Build streak leaderboard from today's submissions by looking up each user's streak
-  const submissions = await getSubmissionsForVoting();
+  const entries = await redis.zRange('leaderboard:streaks', 0, limit - 1, {
+    by: 'rank',
+    reverse: true,
+  });
 
-  // Deduplicate by userId (one entry per user)
-  const seenUsers = new Set<string>();
-  const leaderboard: StreakLeaderboardEntry[] = [];
+  const usernames = await redis.hGetAll('leaderboard:streaks:usernames');
 
-  for (const sub of submissions) {
-    if (seenUsers.has(sub.userId)) continue;
-    seenUsers.add(sub.userId);
-
-    const userStats = await getUserStats(sub.userId);
-    if (userStats.streak > 0) {
-      leaderboard.push({
-        userId: sub.userId,
-        username: userStats.username || sub.username,
-        streak: userStats.streak,
-      });
-    }
-  }
-
-  // Sort by streak descending
-  leaderboard.sort((a, b) => b.streak - a.streak);
-
-  return leaderboard.slice(0, limit);
+  return entries
+    .filter((entry) => entry.score > 0)
+    .map((entry) => ({
+      userId: entry.member,
+      username: usernames[entry.member] || entry.member,
+      streak: entry.score,
+    }));
 }

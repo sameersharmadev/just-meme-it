@@ -91,9 +91,6 @@ export async function deleteSubmission(oderId: string, date?: string): Promise<b
 
   const submission = JSON.parse(data) as Submission;
 
-  // Get vote count from daily leaderboard before removal
-  const voteCount = (await redis.zScore(`leaderboard:${targetDate}`, oderId)) ?? 0;
-
   // Delete the submission itself and the user-submitted tracking key
   await Promise.all([
     redis.hDel(`submissions:${targetDate}`, [oderId]),
@@ -110,11 +107,6 @@ export async function deleteSubmission(oderId: string, date?: string): Promise<b
       `votes:${targetDate}:${oderId}`,
       voters.map((v) => v.member)
     );
-  }
-
-  // Subtract this submission's votes from the user's lifetime score
-  if (voteCount > 0) {
-    await redis.zIncrBy('leaderboard:lifetime', submission.userId, -voteCount);
   }
 
   return true;

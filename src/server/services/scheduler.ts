@@ -1,5 +1,12 @@
 import { redis, reddit } from '@devvit/web/server';
 import captions from '../../../captions.json';
+import { finalizeDayCompetition } from './finalization';
+
+function getYesterdayDate(dateKey: string): string {
+  const d = new Date(dateKey + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().split('T')[0]!;
+}
 
 /**
  * Ensures today's caption post exists. If not, creates it automatically.
@@ -13,7 +20,7 @@ import captions from '../../../captions.json';
  */
 export async function ensureTodayPost(): Promise<boolean> {
   const now = new Date();
-  const dateKey = now.toISOString().split('T')[0];
+  const dateKey = now.toISOString().split('T')[0]!;
   const existingPostId = await redis.get(`day:${dateKey}:postId`);
   if (existingPostId) {
     return false;
@@ -44,6 +51,13 @@ export async function ensureTodayPost(): Promise<boolean> {
 
       await postDailyCaption();
       console.log(`[Auto-Create] Successfully created daily post for ${dateKey}`);
+
+      // Finalize yesterday's competition (fire-and-forget)
+      const yesterday = getYesterdayDate(dateKey);
+      void finalizeDayCompetition(yesterday).catch((err) =>
+        console.error(`[Finalization] Failed to finalize ${yesterday}:`, err)
+      );
+
       return true;
     } finally {
       await redis.del(lockKey);
